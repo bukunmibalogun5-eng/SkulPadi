@@ -89,6 +89,7 @@ export default function Documents() {
       setDocuments(savedDocuments);
     } else {
       setDocuments(sampleDocuments);
+
       localStorage.setItem(
         "documents",
         JSON.stringify(sampleDocuments)
@@ -162,10 +163,8 @@ export default function Documents() {
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
         <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-
           {/* Logo */}
           <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
@@ -185,7 +184,6 @@ export default function Documents() {
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-5">
-
             <SidebarItem
               icon={<LayoutDashboard size={17} />}
               label="Dashboard"
@@ -228,13 +226,11 @@ export default function Documents() {
               label="Settings"
               href="/settings"
             />
-
           </nav>
 
           {/* AI Assistant */}
           <div className="border-t border-[#eee7dc] p-4">
             <div className="rounded-xl bg-[#fbf4e8] p-4">
-
               <p className="text-xs font-semibold text-[#8a5b16]">
                 AI Assistant
               </p>
@@ -242,18 +238,14 @@ export default function Documents() {
               <p className="mt-1 text-xs leading-5 text-zinc-500">
                 Create smarter content with AI-powered tools.
               </p>
-
             </div>
           </div>
-
         </aside>
 
         {/* Main */}
         <section className="flex-1">
-
           {/* Header */}
           <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
-
             <div>
               <h2 className="text-lg font-semibold">
                 Documents
@@ -267,22 +259,20 @@ export default function Documents() {
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
               SB
             </div>
-
           </header>
 
           {/* Content */}
           <div className="p-6 lg:p-10">
-
             {/* Page heading */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-
               <div>
                 <h1 className="text-2xl font-bold">
                   Documents
                 </h1>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  Upload and manage the documents used by your AI workspace.
+                  Upload and manage the documents used by your AI
+                  workspace.
                 </p>
               </div>
 
@@ -309,14 +299,11 @@ export default function Documents() {
                 className="hidden"
                 accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
               />
-
             </div>
 
             {/* Search and filter */}
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-
               <div className="relative flex-1">
-
                 <Search
                   size={17}
                   className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
@@ -331,7 +318,6 @@ export default function Documents() {
                   }
                   className="w-full rounded-lg border border-[#e8dfd0] bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#c58a3a]"
                 />
-
               </div>
 
               <button
@@ -340,19 +326,14 @@ export default function Documents() {
               >
                 All Documents
               </button>
-
             </div>
 
             {/* Documents table */}
             <div className="mt-6 overflow-hidden rounded-xl border border-[#e8dfd0] bg-white shadow-sm">
-
               <div className="overflow-x-auto">
-
                 <table className="w-full min-w-[700px]">
-
                   <thead>
                     <tr className="border-b border-[#eee7dc] bg-[#fcfaf6]">
-
                       <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
                         Document
                       </th>
@@ -372,42 +353,38 @@ export default function Documents() {
                       <th className="px-6 py-4 text-right text-xs font-semibold text-zinc-500">
                         Action
                       </th>
-
                     </tr>
                   </thead>
 
                   <tbody>
-
                     {filteredDocuments.length > 0 ? (
                       filteredDocuments.map((document) => (
                         <tr
                           key={document.id}
                           className="border-b border-[#f0e9de] last:border-b-0 hover:bg-[#fcfaf6]"
                         >
-
                           {/* Document */}
                           <td className="px-6 py-4">
+                            <Link
+                              href={`/documents/${document.id}`}
+                              className="block rounded-lg transition hover:opacity-80"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
+                                  {getFileIcon(document.type)}
+                                </div>
 
-                            <div className="flex items-center gap-3">
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {document.name}
+                                  </p>
 
-                              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                                {getFileIcon(document.type)}
+                                  <p className="mt-1 text-xs text-zinc-400">
+                                    Document
+                                  </p>
+                                </div>
                               </div>
-
-                              <div className="min-w-0">
-
-                                <p className="truncate text-sm font-medium">
-                                  {document.name}
-                                </p>
-
-                                <p className="mt-1 text-xs text-zinc-400">
-                                  Document
-                                </p>
-
-                              </div>
-
-                            </div>
-
+                            </Link>
                           </td>
 
                           {/* Type */}
@@ -427,7 +404,6 @@ export default function Documents() {
 
                           {/* Delete */}
                           <td className="px-6 py-4 text-right">
-
                             <button
                               type="button"
                               onClick={() =>
@@ -438,9 +414,7 @@ export default function Documents() {
                             >
                               <Trash2 size={15} />
                             </button>
-
                           </td>
-
                         </tr>
                       ))
                     ) : (
@@ -449,7 +423,6 @@ export default function Documents() {
                           colSpan={5}
                           className="px-6 py-14 text-center"
                         >
-
                           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#fbf1df] text-[#a66b16]">
                             <File size={21} />
                           </div>
@@ -459,58 +432,44 @@ export default function Documents() {
                           </p>
 
                           <p className="mt-1 text-xs text-zinc-500">
-                            Try another search or upload a document.
+                            Try another search or upload a
+                            document.
                           </p>
-
                         </td>
                       </tr>
                     )}
-
                   </tbody>
-
                 </table>
-
               </div>
-
             </div>
 
             {/* Information panel */}
             <div className="mt-6 rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
               <div className="flex items-start gap-3">
-
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                   <Sparkles size={17} />
                 </div>
 
                 <div>
-
                   <h3 className="text-sm font-semibold">
                     Use your documents with AI
                   </h3>
 
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">
-                    Upload documents to keep your project information
-                    organized. Later, the AI assistant will be able to
-                    use these documents when answering questions and
-                    generating content.
+                    Upload documents to keep your project
+                    information organized. Later, the AI assistant
+                    will be able to use these documents when
+                    answering questions and generating content.
                   </p>
-
                 </div>
-
               </div>
-
             </div>
-
           </div>
-
         </section>
-
       </div>
     </main>
   );
 }
-
 
 /* -------------------------------- */
 /* Sidebar Item                     */
@@ -542,7 +501,6 @@ function SidebarItem({
   );
 }
 
-
 /* -------------------------------- */
 /* File Type                        */
 /* -------------------------------- */
@@ -555,7 +513,6 @@ function getFileType(fileName: string) {
 
   return extension || "FILE";
 }
-
 
 /* -------------------------------- */
 /* File Size                        */
@@ -581,7 +538,6 @@ function formatFileSize(bytes: number) {
     index === 0 ? 0 : 1
   )} ${units[index]}`;
 }
-
 
 /* -------------------------------- */
 /* File Icon                        */
