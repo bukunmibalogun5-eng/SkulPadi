@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   LayoutDashboard,
@@ -19,11 +19,12 @@ import {
   ChevronRight,
   FolderOpen,
 } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 
 type Project = {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   type: string;
   aiEnabled: boolean;
   createdAt: string;
@@ -56,24 +57,6 @@ const defaultStats = [
   },
 ];
 
-const defaultActivities = [
-  {
-    title: "Marketing Strategy.docx",
-    description: "Summarized • 2 min ago",
-    icon: FileText,
-  },
-  {
-    title: "Product Launch Ideas",
-    description: "AI Chat • 1 hour ago",
-    icon: MessageCircle,
-  },
-  {
-    title: "Q2 Sales Report.pdf",
-    description: "Insights extracted • 3 hours ago",
-    icon: BarChart3,
-  },
-];
-
 const quickActions = [
   { title: "Chat with AI", icon: MessageCircle, href: "/chat" },
   { title: "Upload Document", icon: Upload, href: "/documents" },
@@ -81,53 +64,74 @@ const quickActions = [
   { title: "Analyze Data", icon: BarChart3, href: "/analytics" },
 ];
 
-function subscribeToProjects(callback: () => void) {
-  window.addEventListener("storage", callback);
-  window.addEventListener("projectsUpdated", callback);
-
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener("projectsUpdated", callback);
-  };
-}
-
-function getProjectsSnapshot() {
-  return localStorage.getItem("projects") ?? "[]";
-}
-
-function getProjectsServerSnapshot() {
-  return "[]";
-}
-
 export default function Home() {
-  const savedProjects = useSyncExternalStore(
-    subscribeToProjects,
-    getProjectsSnapshot,
-    getProjectsServerSnapshot
-  );
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [projectError, setProjectError] = useState("");
 
-  const projects = useMemo<Project[]>(() => {
-    try {
-      const parsed: unknown = JSON.parse(savedProjects);
+  useEffect(() => {
+    let cancelled = false;
 
-      if (!Array.isArray(parsed)) {
-        return [];
+    async function loadProjects() {
+      try {
+        const supabase = createClient();
+
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+          throw new Error(
+            "Please sign in again to load your projects."
+          );
+        }
+
+        const { data, error } = await supabase
+          .from("projects")
+          .select(
+            "id, name, description, category, ai_enabled, created_at"
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        if (!cancelled) {
+          setProjects(
+            (data ?? []).map((project) => ({
+              id: project.id,
+              name: project.name,
+              description: project.description,
+              type: project.category,
+              aiEnabled: project.ai_enabled,
+              createdAt: project.created_at,
+            }))
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load projects:", error);
+
+        if (!cancelled) {
+          setProjectError(
+            "Unable to load your projects. Please refresh the page."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingProjects(false);
+        }
       }
-
-      return parsed.filter(
-        (item): item is Project =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof item.id === "string" &&
-          typeof item.name === "string" &&
-          typeof item.type === "string" &&
-          typeof item.createdAt === "string"
-      );
-    } catch (error) {
-      console.error("Failed to load saved projects:", error);
-      return [];
     }
-  }, [savedProjects]);
+
+    loadProjects();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const stats = useMemo(
     () =>
@@ -164,31 +168,37 @@ export default function Home() {
               href="/"
               active
             />
+
             <SidebarItem
               icon={<Plus size={17} />}
               label="New Project"
               href="/new-project"
             />
+
             <SidebarItem
               icon={<FileText size={17} />}
               label="Documents"
               href="/documents"
             />
+
             <SidebarItem
               icon={<MessageCircle size={17} />}
               label="AI Chat"
               href="/chat"
             />
+
             <SidebarItem
               icon={<PanelsTopLeft size={17} />}
               label="Templates"
               href="/templates"
             />
+
             <SidebarItem
               icon={<BarChart3 size={17} />}
               label="Analytics"
               href="/analytics"
             />
+
             <SidebarItem
               icon={<Settings size={17} />}
               label="Settings"
@@ -202,6 +212,7 @@ export default function Home() {
               <p className="text-xs font-semibold text-[#8a5b16]">
                 AI Assistant
               </p>
+
               <p className="mt-1 text-xs leading-5 text-zinc-500">
                 Create smarter content with AI-powered tools.
               </p>
@@ -239,8 +250,9 @@ export default function Home() {
             {/* Welcome */}
             <div className="mb-7">
               <h3 className="text-2xl font-bold tracking-tight">
-                Welcome back, Shivang! 👋
+                Welcome back! 👋
               </h3>
+
               <p className="mt-1 text-sm text-zinc-500">
                 Here&apos;s what&apos;s happening with your projects.
               </p>
@@ -266,7 +278,9 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <p className="mt-4 text-2xl font-bold">{stat.value}</p>
+                    <p className="mt-4 text-2xl font-bold">
+                      {stat.value}
+                    </p>
 
                     <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
                       <TrendingUp size={13} />
@@ -290,63 +304,76 @@ export default function Home() {
                   </div>
 
                   <Link
-                    href="/documents"
+                    href="/new-project"
                     className="flex items-center gap-1 text-xs font-medium text-[#a66b16]"
                   >
-                    View all
+                    New project
                     <ChevronRight size={14} />
                   </Link>
                 </div>
 
                 <div className="mt-6 space-y-4">
-                  {projects.length > 0 ? (
-                    [...projects]
-                      .reverse()
-                      .slice(0, 3)
-                      .map((project) => (
-                        <div
-                          key={project.id}
-                          className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
-                        >
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                            <FolderOpen size={16} />
-                          </div>
-
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">
-                              {project.name}
-                            </p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {project.type} Project •{" "}
-                              {formatTimeAgo(project.createdAt)}
-                            </p>
-                          </div>
+                  {isLoadingProjects ? (
+                    <p className="py-4 text-sm text-zinc-500">
+                      Loading your projects...
+                    </p>
+                  ) : projectError ? (
+                    <p
+                      role="alert"
+                      className="py-4 text-sm text-red-600"
+                    >
+                      {projectError}
+                    </p>
+                  ) : projects.length > 0 ? (
+                    projects.slice(0, 3).map((project) => (
+                      <div
+                        key={project.id}
+                        className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
+                      >
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
+                          <FolderOpen size={16} />
                         </div>
-                      ))
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">
+                            {project.name}
+                          </p>
+
+                          <p className="mt-1 text-xs text-zinc-500">
+                            {project.type} Project •{" "}
+                            {formatTimeAgo(project.createdAt)}
+                          </p>
+
+                          {project.description && (
+                            <p className="mt-1 truncate text-xs text-zinc-400">
+                              {project.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))
                   ) : (
-                    defaultActivities.map((activity) => {
-                      const Icon = activity.icon;
+                    <div className="py-6 text-center">
+                      <FolderOpen
+                        className="mx-auto text-zinc-400"
+                        size={28}
+                      />
 
-                      return (
-                        <div
-                          key={activity.title}
-                          className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
-                        >
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                            <Icon size={16} />
-                          </div>
+                      <p className="mt-3 text-sm font-medium">
+                        No projects yet
+                      </p>
 
-                          <div>
-                            <p className="text-sm font-medium">
-                              {activity.title}
-                            </p>
-                            <p className="mt-1 text-xs text-zinc-500">
-                              {activity.description}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Create your first project to see it here.
+                      </p>
+
+                      <Link
+                        href="/new-project"
+                        className="mt-4 inline-block text-sm font-medium text-[#a66b16] hover:underline"
+                      >
+                        Create a project
+                      </Link>
+                    </div>
                   )}
                 </div>
               </div>
@@ -423,10 +450,14 @@ export default function Home() {
 
 function formatTimeAgo(dateString: string) {
   const createdAt = new Date(dateString);
-  const now = new Date();
 
-  const difference = Math.floor(
-    (now.getTime() - createdAt.getTime()) / 1000
+  if (Number.isNaN(createdAt.getTime())) {
+    return "recently";
+  }
+
+  const difference = Math.max(
+    0,
+    Math.floor((Date.now() - createdAt.getTime()) / 1000)
   );
 
   if (difference < 60) {
@@ -447,7 +478,19 @@ function formatTimeAgo(dateString: string) {
 
   const days = Math.floor(hours / 24);
 
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  if (days < 30) {
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
+  const months = Math.floor(days / 30);
+
+  if (months < 12) {
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  }
+
+  const years = Math.floor(months / 12);
+
+  return `${years} year${years === 1 ? "" : "s"} ago`;
 }
 
 function SidebarItem({

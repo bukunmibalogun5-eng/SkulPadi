@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -12,15 +11,7 @@ import {
   FolderOpen,
   Check,
 } from "lucide-react";
-
-type Project = {
-  id: string;
-  name: string;
-  description: string;
-  type: string;
-  aiEnabled: boolean;
-  createdAt: string;
-};
+import { createClient } from "@/lib/supabase/client";
 
 export default function NewProject() {
   const router = useRouter();
@@ -30,8 +21,9 @@ export default function NewProject() {
   const [projectType, setProjectType] = useState("Content");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  function handleCreateProject() {
+  async function handleCreateProject() {
     setError("");
 
     if (!projectName.trim()) {
@@ -39,38 +31,46 @@ export default function NewProject() {
       return;
     }
 
-    const newProject: Project = {
-      id: crypto.randomUUID(),
-      name: projectName.trim(),
-      description: description.trim(),
-      type: projectType,
-      aiEnabled,
-      createdAt: new Date().toISOString(),
-    };
+    if (isSaving) return;
+
+    setIsSaving(true);
 
     try {
-      const savedProjects = localStorage.getItem("projects");
-      const parsedProjects: unknown = savedProjects
-        ? JSON.parse(savedProjects)
-        : [];
+      const supabase = createClient();
 
-      if (!Array.isArray(parsedProjects)) {
-        setError("Unable to load existing projects. Please try again.");
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        setError("Your session has expired. Please log in again.");
         return;
       }
 
-      const existingProjects = parsedProjects as Project[];
+      const { error: insertError } = await supabase
+        .from("projects")
+        .insert({
+          user_id: user.id,
+          name: projectName.trim(),
+          description: description.trim(),
+          category: projectType,
+          status: "active",
+          ai_enabled: aiEnabled,
+        });
 
-      localStorage.setItem(
-        "projects",
-        JSON.stringify([...existingProjects, newProject])
-      );
+      if (insertError) {
+        console.error("Supabase project insert error:", insertError);
+        setError("Unable to save your project. Please try again.");
+        return;
+      }
 
-      window.dispatchEvent(new Event("projectsUpdated"));
       router.push("/");
-    } catch (error) {
-      console.error("Failed to create project:", error);
-      setError("Something went wrong while creating the project. Please try again.");
+    } catch (err) {
+      console.error("Failed to create project:", err);
+      setError("Something went wrong while creating the project.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -164,6 +164,7 @@ export default function NewProject() {
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="e.g. Marketing Campaign"
                   className="mt-4 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-3 text-sm outline-none focus:border-[#c58a3a]"
+                  disabled={isSaving}
                 />
               </div>
 
@@ -187,6 +188,7 @@ export default function NewProject() {
                   placeholder="Describe your project..."
                   rows={5}
                   className="mt-4 w-full resize-none rounded-lg border border-[#e8dfd0] bg-white px-3 py-3 text-sm outline-none focus:border-[#c58a3a]"
+                  disabled={isSaving}
                 />
               </div>
 
@@ -251,8 +253,9 @@ export default function NewProject() {
                     role="switch"
                     aria-checked={aiEnabled}
                     aria-label="Enable AI assistance"
+                    disabled={isSaving}
                     onClick={() => setAiEnabled(!aiEnabled)}
-                    className={`h-6 w-11 rounded-full p-1 transition ${
+                    className={`h-6 w-11 rounded-full p-1 transition disabled:opacity-60 ${
                       aiEnabled ? "bg-[#a66b16]" : "bg-zinc-300"
                     }`}
                   >
@@ -279,7 +282,10 @@ export default function NewProject() {
               <div className="flex justify-end gap-3">
                 <Link
                   href="/"
-                  className="rounded-lg border border-[#e8dfd0] bg-white px-5 py-2.5 text-sm font-medium hover:bg-zinc-50"
+                  className={`rounded-lg border border-[#e8dfd0] bg-white px-5 py-2.5 text-sm font-medium hover:bg-zinc-50 ${
+                    isSaving ? "pointer-events-none opacity-60" : ""
+                  }`}
+                  aria-disabled={isSaving}
                 >
                   Cancel
                 </Link>
@@ -287,10 +293,11 @@ export default function NewProject() {
                 <button
                   type="button"
                   onClick={handleCreateProject}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#a66b16] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#925c12]"
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#a66b16] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#925c12] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Check size={16} />
-                  Create Project
+                  {isSaving ? "Saving..." : "Create Project"}
                 </button>
               </div>
             </div>
@@ -325,14 +332,12 @@ function ProjectType({
           : "border-[#e8dfd0] bg-white hover:bg-zinc-50"
       }`}
     >
-      {/* Checkmark for selected card */}
       {selected && (
         <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#a66b16] text-white">
           <Check size={13} />
         </div>
       )}
 
-      {/* Icon */}
       <div
         className={`flex h-9 w-9 items-center justify-center rounded-lg ${
           selected
@@ -343,10 +348,8 @@ function ProjectType({
         {icon}
       </div>
 
-      {/* Title */}
       <p className="mt-3 text-sm font-semibold">{title}</p>
 
-      {/* Description */}
       <p className="mt-1 text-xs text-zinc-500">{description}</p>
     </button>
   );
