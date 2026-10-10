@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -15,7 +15,7 @@ import {
   Search,
   Trash2,
   File,
-  Image,
+  Image as ImageIcon,
   FileSpreadsheet,
   FileType,
 } from "lucide-react";
@@ -73,29 +73,58 @@ const sampleDocuments: DocumentItem[] = [
   },
 ];
 
+const SAMPLE_DOCUMENTS_JSON = JSON.stringify(sampleDocuments);
+
+function subscribeToDocuments(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener("documentsUpdated", callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("documentsUpdated", callback);
+  };
+}
+
+function getDocumentsSnapshot() {
+  return (
+    localStorage.getItem("documents") ?? SAMPLE_DOCUMENTS_JSON
+  );
+}
+
+function getDocumentsServerSnapshot() {
+  return SAMPLE_DOCUMENTS_JSON;
+}
+
+function saveDocuments(documents: DocumentItem[]) {
+  localStorage.setItem("documents", JSON.stringify(documents));
+  window.dispatchEvent(new Event("documentsUpdated"));
+}
+
 export default function Documents() {
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const savedDocuments = useSyncExternalStore(
+    subscribeToDocuments,
+    getDocumentsSnapshot,
+    getDocumentsServerSnapshot
+  );
+
+  const documents: DocumentItem[] = (() => {
+    try {
+      const parsed: unknown = JSON.parse(savedDocuments);
+
+      if (!Array.isArray(parsed)) {
+        return sampleDocuments;
+      }
+
+      return parsed as DocumentItem[];
+    } catch {
+      return sampleDocuments;
+    }
+  })();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [isUploading, setIsUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const savedDocuments = JSON.parse(
-      localStorage.getItem("documents") || "null"
-    );
-
-    if (savedDocuments) {
-      setDocuments(savedDocuments);
-    } else {
-      setDocuments(sampleDocuments);
-
-      localStorage.setItem(
-        "documents",
-        JSON.stringify(sampleDocuments)
-      );
-    }
-  }, []);
 
   function handleUploadClick() {
     fileInputRef.current?.click();
@@ -122,17 +151,9 @@ export default function Documents() {
       })
     );
 
-    const updatedDocuments = [
-      ...newDocuments,
-      ...documents,
-    ];
+    const updatedDocuments = [...newDocuments, ...documents];
 
-    setDocuments(updatedDocuments);
-
-    localStorage.setItem(
-      "documents",
-      JSON.stringify(updatedDocuments)
-    );
+    saveDocuments(updatedDocuments);
 
     setTimeout(() => {
       setIsUploading(false);
@@ -146,18 +167,11 @@ export default function Documents() {
       (document) => document.id !== id
     );
 
-    setDocuments(updatedDocuments);
-
-    localStorage.setItem(
-      "documents",
-      JSON.stringify(updatedDocuments)
-    );
+    saveDocuments(updatedDocuments);
   }
 
   const filteredDocuments = documents.filter((document) =>
-    document.name
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase())
+    document.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -172,13 +186,8 @@ export default function Documents() {
             </div>
 
             <div>
-              <h1 className="text-sm font-bold">
-                AI Content
-              </h1>
-
-              <p className="text-xs text-zinc-500">
-                Assistant
-              </p>
+              <h1 className="text-sm font-bold">AI Content</h1>
+              <p className="text-xs text-zinc-500">Assistant</p>
             </div>
           </div>
 
@@ -247,16 +256,16 @@ export default function Documents() {
           {/* Header */}
           <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
             <div>
-              <h2 className="text-lg font-semibold">
-                Documents
-              </h2>
-
+              <h2 className="text-lg font-semibold">Documents</h2>
               <p className="text-xs text-zinc-500">
                 Manage your project documents
               </p>
             </div>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white"
+              aria-label="User profile"
+            >
               SB
             </div>
           </header>
@@ -266,9 +275,7 @@ export default function Documents() {
             {/* Page heading */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h1 className="text-2xl font-bold">
-                  Documents
-                </h1>
+                <h1 className="text-2xl font-bold">Documents</h1>
 
                 <p className="mt-1 text-sm text-zinc-500">
                   Upload and manage the documents used by your AI
@@ -284,10 +291,7 @@ export default function Documents() {
                 className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Upload size={16} />
-
-                {isUploading
-                  ? "Uploading..."
-                  : "Upload Document"}
+                {isUploading ? "Uploading..." : "Upload Document"}
               </button>
 
               {/* Hidden file input */}
@@ -406,11 +410,10 @@ export default function Documents() {
                           <td className="px-6 py-4 text-right">
                             <button
                               type="button"
-                              onClick={() =>
-                                handleDelete(document.id)
-                              }
+                              onClick={() => handleDelete(document.id)}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-red-50 hover:text-red-500"
                               title="Delete document"
+                              aria-label={`Delete ${document.name}`}
                             >
                               <Trash2 size={15} />
                             </button>
@@ -432,8 +435,7 @@ export default function Documents() {
                           </p>
 
                           <p className="mt-1 text-xs text-zinc-500">
-                            Try another search or upload a
-                            document.
+                            Try another search or upload a document.
                           </p>
                         </td>
                       </tr>
@@ -456,10 +458,10 @@ export default function Documents() {
                   </h3>
 
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">
-                    Upload documents to keep your project
-                    information organized. Later, the AI assistant
-                    will be able to use these documents when
-                    answering questions and generating content.
+                    Upload documents to keep your project information
+                    organized. Later, the AI assistant will be able to
+                    use these documents when answering questions and
+                    generating content.
                   </p>
                 </div>
               </div>
@@ -471,9 +473,7 @@ export default function Documents() {
   );
 }
 
-/* -------------------------------- */
-/* Sidebar Item                     */
-/* -------------------------------- */
+/* Sidebar Item */
 
 function SidebarItem({
   icon,
@@ -501,69 +501,41 @@ function SidebarItem({
   );
 }
 
-/* -------------------------------- */
-/* File Type                        */
-/* -------------------------------- */
+/* File Type */
 
 function getFileType(fileName: string) {
-  const extension = fileName
-    .split(".")
-    .pop()
-    ?.toUpperCase();
+  const extension = fileName.split(".").pop()?.toUpperCase();
 
   return extension || "FILE";
 }
 
-/* -------------------------------- */
-/* File Size                        */
-/* -------------------------------- */
+/* File Size */
 
 function formatFileSize(bytes: number) {
   if (bytes === 0) {
     return "0 Bytes";
   }
 
-  const units = [
-    "Bytes",
-    "KB",
-    "MB",
-    "GB",
-  ];
-
-  const index = Math.floor(
-    Math.log(bytes) / Math.log(1024)
-  );
+  const units = ["Bytes", "KB", "MB", "GB"];
+  const index = Math.floor(Math.log(bytes) / Math.log(1024));
 
   return `${(bytes / Math.pow(1024, index)).toFixed(
     index === 0 ? 0 : 1
   )} ${units[index]}`;
 }
 
-/* -------------------------------- */
-/* File Icon                        */
-/* -------------------------------- */
+/* File Icon */
 
 function getFileIcon(type: string) {
-  if (
-    type === "PNG" ||
-    type === "JPG" ||
-    type === "JPEG"
-  ) {
-    return <Image size={17} />;
+  if (type === "PNG" || type === "JPG" || type === "JPEG") {
+    return <ImageIcon size={17} aria-hidden="true" />;
   }
 
-  if (
-    type === "XLSX" ||
-    type === "XLS" ||
-    type === "CSV"
-  ) {
+  if (type === "XLSX" || type === "XLS" || type === "CSV") {
     return <FileSpreadsheet size={17} />;
   }
 
-  if (
-    type === "DOC" ||
-    type === "DOCX"
-  ) {
+  if (type === "DOC" || type === "DOCX") {
     return <FileType size={17} />;
   }
 

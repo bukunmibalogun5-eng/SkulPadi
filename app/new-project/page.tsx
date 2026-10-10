@@ -1,6 +1,8 @@
+
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Sparkles,
@@ -21,6 +23,8 @@ type Project = {
 };
 
 export default function NewProject() {
+  const router = useRouter();
+
   const [projectName, setProjectName] = useState("");
   const [description, setDescription] = useState("");
   const [projectType, setProjectType] = useState("Content");
@@ -44,22 +48,35 @@ export default function NewProject() {
       createdAt: new Date().toISOString(),
     };
 
-    const existingProjects = JSON.parse(
-      localStorage.getItem("projects") || "[]"
-    );
+    try {
+      const savedProjects = localStorage.getItem("projects");
+      const parsedProjects: unknown = savedProjects
+        ? JSON.parse(savedProjects)
+        : [];
 
-    localStorage.setItem(
-      "projects",
-      JSON.stringify([...existingProjects, newProject])
-    );
+      if (!Array.isArray(parsedProjects)) {
+        setError("Unable to load existing projects. Please try again.");
+        return;
+      }
 
-    window.location.href = "/";
+      const existingProjects = parsedProjects as Project[];
+
+      localStorage.setItem(
+        "projects",
+        JSON.stringify([...existingProjects, newProject])
+      );
+
+      window.dispatchEvent(new Event("projectsUpdated"));
+      router.push("/");
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      setError("Something went wrong while creating the project. Please try again.");
+    }
   }
 
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
         <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
           <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
@@ -90,7 +107,6 @@ export default function NewProject() {
 
         {/* Main */}
         <section className="flex-1">
-
           {/* Header */}
           <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
             <div>
@@ -106,7 +122,6 @@ export default function NewProject() {
           </header>
 
           <div className="p-6 lg:p-10">
-
             {/* Back */}
             <Link
               href="/"
@@ -129,10 +144,12 @@ export default function NewProject() {
 
             {/* Form */}
             <div className="mt-8 max-w-3xl space-y-6">
-
               {/* Project Name */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <label className="text-sm font-semibold">
+                <label
+                  htmlFor="project-name"
+                  className="text-sm font-semibold"
+                >
                   Project Name
                 </label>
 
@@ -141,6 +158,7 @@ export default function NewProject() {
                 </p>
 
                 <input
+                  id="project-name"
                   type="text"
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
@@ -151,15 +169,19 @@ export default function NewProject() {
 
               {/* Project Description */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <label className="text-sm font-semibold">
+                <label
+                  htmlFor="project-description"
+                  className="text-sm font-semibold"
+                >
                   Project Description
                 </label>
 
                 <p className="mt-1 text-xs text-zinc-500">
-                  Briefly describe what you're working on.
+                  Briefly describe what you&apos;re working on.
                 </p>
 
                 <textarea
+                  id="project-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe your project..."
@@ -171,9 +193,7 @@ export default function NewProject() {
               {/* Project Type */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
                 <div>
-                  <h3 className="text-sm font-semibold">
-                    Project Type
-                  </h3>
+                  <h3 className="text-sm font-semibold">Project Type</h3>
 
                   <p className="mt-1 text-xs text-zinc-500">
                     Choose the type that best describes your project.
@@ -181,8 +201,6 @@ export default function NewProject() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
-
-                  {/* Content */}
                   <ProjectType
                     icon={<FileText size={20} />}
                     title="Content"
@@ -191,7 +209,6 @@ export default function NewProject() {
                     onClick={() => setProjectType("Content")}
                   />
 
-                  {/* AI Assistant */}
                   <ProjectType
                     icon={<Bot size={20} />}
                     title="AI Assistant"
@@ -200,7 +217,6 @@ export default function NewProject() {
                     onClick={() => setProjectType("AI Assistant")}
                   />
 
-                  {/* Other */}
                   <ProjectType
                     icon={<FolderOpen size={20} />}
                     title="Other"
@@ -208,17 +224,13 @@ export default function NewProject() {
                     selected={projectType === "Other"}
                     onClick={() => setProjectType("Other")}
                   />
-
                 </div>
               </div>
 
               {/* AI Assistance */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
                 <div className="flex items-center justify-between">
-
                   <div className="flex items-start gap-3">
-
                     <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                       <Sparkles size={18} />
                     </div>
@@ -232,40 +244,39 @@ export default function NewProject() {
                         Enable AI-powered assistance for this project.
                       </p>
                     </div>
-
                   </div>
 
                   <button
                     type="button"
+                    role="switch"
+                    aria-checked={aiEnabled}
+                    aria-label="Enable AI assistance"
                     onClick={() => setAiEnabled(!aiEnabled)}
                     className={`h-6 w-11 rounded-full p-1 transition ${
-                      aiEnabled
-                        ? "bg-[#a66b16]"
-                        : "bg-zinc-300"
+                      aiEnabled ? "bg-[#a66b16]" : "bg-zinc-300"
                     }`}
                   >
                     <div
                       className={`h-4 w-4 rounded-full bg-white transition ${
-                        aiEnabled
-                          ? "translate-x-5"
-                          : "translate-x-0"
+                        aiEnabled ? "translate-x-5" : "translate-x-0"
                       }`}
                     />
                   </button>
-
                 </div>
               </div>
 
               {/* Error */}
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+                >
                   {error}
                 </div>
               )}
 
               {/* Buttons */}
               <div className="flex justify-end gap-3">
-
                 <Link
                   href="/"
                   className="rounded-lg border border-[#e8dfd0] bg-white px-5 py-2.5 text-sm font-medium hover:bg-zinc-50"
@@ -281,9 +292,7 @@ export default function NewProject() {
                   <Check size={16} />
                   Create Project
                 </button>
-
               </div>
-
             </div>
           </div>
         </section>
@@ -291,11 +300,6 @@ export default function NewProject() {
     </main>
   );
 }
-
-
-/* -------------------------------- */
-/* Project Type Card                */
-/* -------------------------------- */
 
 function ProjectType({
   icon,
@@ -321,7 +325,6 @@ function ProjectType({
           : "border-[#e8dfd0] bg-white hover:bg-zinc-50"
       }`}
     >
-
       {/* Checkmark for selected card */}
       {selected && (
         <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#a66b16] text-white">
@@ -341,23 +344,13 @@ function ProjectType({
       </div>
 
       {/* Title */}
-      <p className="mt-3 text-sm font-semibold">
-        {title}
-      </p>
+      <p className="mt-3 text-sm font-semibold">{title}</p>
 
       {/* Description */}
-      <p className="mt-1 text-xs text-zinc-500">
-        {description}
-      </p>
-
+      <p className="mt-1 text-xs text-zinc-500">{description}</p>
     </button>
   );
 }
-
-
-/* -------------------------------- */
-/* Sidebar Item                     */
-/* -------------------------------- */
 
 function SidebarItem({
   label,

@@ -1,8 +1,8 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
-
 import {
   LayoutDashboard,
   Plus,
@@ -75,54 +75,75 @@ const defaultActivities = [
 ];
 
 const quickActions = [
-  {
-    title: "Chat with AI",
-    icon: MessageCircle,
-  },
-  {
-    title: "Upload Document",
-    icon: Upload,
-  },
-  {
-    title: "Create Template",
-    icon: FilePlus2,
-  },
-  {
-    title: "Analyze Data",
-    icon: BarChart3,
-  },
+  { title: "Chat with AI", icon: MessageCircle, href: "/chat" },
+  { title: "Upload Document", icon: Upload, href: "/documents" },
+  { title: "Create Template", icon: FilePlus2, href: "/templates" },
+  { title: "Analyze Data", icon: BarChart3, href: "/analytics" },
 ];
 
+function subscribeToProjects(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener("projectsUpdated", callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("projectsUpdated", callback);
+  };
+}
+
+function getProjectsSnapshot() {
+  return localStorage.getItem("projects") ?? "[]";
+}
+
+function getProjectsServerSnapshot() {
+  return "[]";
+}
+
 export default function Home() {
-  const [stats, setStats] = useState(defaultStats);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const savedProjects = useSyncExternalStore(
+    subscribeToProjects,
+    getProjectsSnapshot,
+    getProjectsServerSnapshot
+  );
 
-  useEffect(() => {
-    const savedProjects: Project[] = JSON.parse(
-      localStorage.getItem("projects") || "[]"
-    );
+  const projects = useMemo<Project[]>(() => {
+    try {
+      const parsed: unknown = JSON.parse(savedProjects);
 
-    setProjects(savedProjects);
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
 
-    setStats((currentStats) =>
-      currentStats.map((stat) =>
+      return parsed.filter(
+        (item): item is Project =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof item.id === "string" &&
+          typeof item.name === "string" &&
+          typeof item.type === "string" &&
+          typeof item.createdAt === "string"
+      );
+    } catch (error) {
+      console.error("Failed to load saved projects:", error);
+      return [];
+    }
+  }, [savedProjects]);
+
+  const stats = useMemo(
+    () =>
+      defaultStats.map((stat) =>
         stat.label === "Total Projects"
-          ? {
-              ...stat,
-              value: String(savedProjects.length),
-            }
+          ? { ...stat, value: String(projects.length) }
           : stat
-      )
-    );
-  }, []);
+      ),
+    [projects.length]
+  );
 
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
         <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-
           {/* Logo */}
           <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
@@ -137,50 +158,42 @@ export default function Home() {
 
           {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-5">
-
             <SidebarItem
               icon={<LayoutDashboard size={17} />}
               label="Dashboard"
               href="/"
               active
             />
-
             <SidebarItem
               icon={<Plus size={17} />}
               label="New Project"
               href="/new-project"
             />
-
             <SidebarItem
               icon={<FileText size={17} />}
               label="Documents"
               href="/documents"
             />
-
             <SidebarItem
               icon={<MessageCircle size={17} />}
               label="AI Chat"
               href="/chat"
             />
-
             <SidebarItem
               icon={<PanelsTopLeft size={17} />}
               label="Templates"
               href="/templates"
             />
-
             <SidebarItem
               icon={<BarChart3 size={17} />}
               label="Analytics"
               href="/analytics"
             />
-
             <SidebarItem
               icon={<Settings size={17} />}
               label="Settings"
               href="/settings"
             />
-
           </nav>
 
           {/* AI Assistant */}
@@ -189,33 +202,25 @@ export default function Home() {
               <p className="text-xs font-semibold text-[#8a5b16]">
                 AI Assistant
               </p>
-
               <p className="mt-1 text-xs leading-5 text-zinc-500">
                 Create smarter content with AI-powered tools.
               </p>
             </div>
           </div>
-
         </aside>
 
         {/* Main */}
         <section className="flex-1">
-
           {/* Header */}
           <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
-
             <div>
-              <h2 className="text-lg font-semibold">
-                Dashboard
-              </h2>
-
+              <h2 className="text-lg font-semibold">Dashboard</h2>
               <p className="text-xs text-zinc-500">
                 Your AI workspace at a glance
               </p>
             </div>
 
             <div className="flex items-center gap-3">
-
               <Link
                 href="/new-project"
                 className="rounded-lg bg-[#a66b16] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#8e5a12]"
@@ -226,30 +231,23 @@ export default function Home() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
                 SB
               </div>
-
             </div>
-
           </header>
 
           {/* Dashboard Content */}
           <div className="p-6 lg:p-10">
-
             {/* Welcome */}
             <div className="mb-7">
-
               <h3 className="text-2xl font-bold tracking-tight">
                 Welcome back, Shivang! 👋
               </h3>
-
               <p className="mt-1 text-sm text-zinc-500">
-                Here's what's happening with your projects.
+                Here&apos;s what&apos;s happening with your projects.
               </p>
-
             </div>
 
             {/* Stats */}
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
               {stats.map((stat) => {
                 const Icon = stat.icon;
 
@@ -258,9 +256,7 @@ export default function Home() {
                     key={stat.label}
                     className="rounded-xl border border-[#e8dfd0] bg-white p-5 shadow-sm"
                   >
-
                     <div className="flex items-center justify-between">
-
                       <p className="text-xs font-medium text-zinc-500">
                         {stat.label}
                       </p>
@@ -268,52 +264,41 @@ export default function Home() {
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                         <Icon size={16} />
                       </div>
-
                     </div>
 
-                    <p className="mt-4 text-2xl font-bold">
-                      {stat.value}
-                    </p>
+                    <p className="mt-4 text-2xl font-bold">{stat.value}</p>
 
                     <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
                       <TrendingUp size={13} />
                       {stat.change}
                     </div>
-
                   </div>
                 );
               })}
-
             </div>
 
             {/* Middle Section */}
             <div className="mt-6 grid gap-6 xl:grid-cols-2">
-
               {/* Recent Activity */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
                 <div className="flex items-center justify-between">
-
                   <div>
-                    <h4 className="font-semibold">
-                      Recent Activity
-                    </h4>
-
+                    <h4 className="font-semibold">Recent Activity</h4>
                     <p className="mt-1 text-xs text-zinc-500">
                       Your latest AI workspace activity
                     </p>
                   </div>
 
-                  <button className="flex items-center gap-1 text-xs font-medium text-[#a66b16]">
+                  <Link
+                    href="/documents"
+                    className="flex items-center gap-1 text-xs font-medium text-[#a66b16]"
+                  >
                     View all
                     <ChevronRight size={14} />
-                  </button>
-
+                  </Link>
                 </div>
 
                 <div className="mt-6 space-y-4">
-
-                  {/* Show saved projects */}
                   {projects.length > 0 ? (
                     [...projects]
                       .reverse()
@@ -323,7 +308,6 @@ export default function Home() {
                           key={project.id}
                           className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
                         >
-
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                             <FolderOpen size={16} />
                           </div>
@@ -332,17 +316,14 @@ export default function Home() {
                             <p className="truncate text-sm font-medium">
                               {project.name}
                             </p>
-
                             <p className="mt-1 text-xs text-zinc-500">
                               {project.type} Project •{" "}
                               {formatTimeAgo(project.createdAt)}
                             </p>
                           </div>
-
                         </div>
                       ))
                   ) : (
-                    /* Show sample activity when no projects exist */
                     defaultActivities.map((activity) => {
                       const Icon = activity.icon;
 
@@ -351,7 +332,6 @@ export default function Home() {
                           key={activity.title}
                           className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
                         >
-
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                             <Icon size={16} />
                           </div>
@@ -360,36 +340,27 @@ export default function Home() {
                             <p className="text-sm font-medium">
                               {activity.title}
                             </p>
-
                             <p className="mt-1 text-xs text-zinc-500">
                               {activity.description}
                             </p>
                           </div>
-
                         </div>
                       );
                     })
                   )}
-
                 </div>
-
               </div>
 
               {/* Usage Overview */}
               <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
                 <div>
-                  <h4 className="font-semibold">
-                    Usage Overview
-                  </h4>
-
+                  <h4 className="font-semibold">Usage Overview</h4>
                   <p className="mt-1 text-xs text-zinc-500">
                     AI usage during the week
                   </p>
                 </div>
 
                 <div className="mt-8 flex h-48 items-end justify-between gap-3">
-
                   {[35, 48, 55, 72, 58, 78, 92].map(
                     (height, index) => (
                       <div
@@ -398,14 +369,11 @@ export default function Home() {
                       >
                         <div
                           className="w-full rounded-t-md bg-[#d8a35d]"
-                          style={{
-                            height: `${height}%`,
-                          }}
+                          style={{ height: `${height}%` }}
                         />
                       </div>
                     )
                   )}
-
                 </div>
 
                 <div className="mt-3 flex justify-between text-xs text-zinc-400">
@@ -417,54 +385,41 @@ export default function Home() {
                   <span>Sat</span>
                   <span>Sun</span>
                 </div>
-
               </div>
-
             </div>
 
             {/* Quick Actions */}
             <div className="mt-6">
-
-              <h4 className="mb-4 font-semibold">
-                Quick Actions
-              </h4>
+              <h4 className="mb-4 font-semibold">Quick Actions</h4>
 
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {quickActions.map((action) => {
+                  const Icon = action.icon;
 
-                {quickActions.map((action) => (
-                  <button
-                    key={action.title}
-                    className="flex items-center gap-3 rounded-xl border border-[#e8dfd0] bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d8a35d]"
-                  >
+                  return (
+                    <Link
+                      key={action.title}
+                      href={action.href}
+                      className="flex items-center gap-3 rounded-xl border border-[#e8dfd0] bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d8a35d]"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
+                        <Icon size={17} />
+                      </div>
 
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                      <action.icon size={17} />
-                    </div>
-
-                    <span className="text-sm font-medium">
-                      {action.title}
-                    </span>
-
-                  </button>
-                ))}
-
+                      <span className="text-sm font-medium">
+                        {action.title}
+                      </span>
+                    </Link>
+                  );
+                })}
               </div>
-
             </div>
-
           </div>
-
         </section>
-
       </div>
     </main>
   );
 }
-
-
-/* -------------------------------- */
-/* Format Project Time               */
-/* -------------------------------- */
 
 function formatTimeAgo(dateString: string) {
   const createdAt = new Date(dateString);
@@ -494,11 +449,6 @@ function formatTimeAgo(dateString: string) {
 
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
-
-
-/* -------------------------------- */
-/* Sidebar Item                     */
-/* -------------------------------- */
 
 function SidebarItem({
   icon,

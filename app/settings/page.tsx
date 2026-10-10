@@ -1,13 +1,13 @@
+
 "use client";
 
 import Link from "next/link";
-import { Sparkles, User, Bell, Shield, Palette, Settings as SettingsIcon } from "lucide-react";
+import { Sparkles, User, Bell, Shield, Palette } from "lucide-react";
 
 export default function Settings() {
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
         <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
           <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
@@ -34,7 +34,6 @@ export default function Settings() {
 
         {/* Main */}
         <section className="flex-1">
-
           {/* Header */}
           <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
             <div>
@@ -50,7 +49,6 @@ export default function Settings() {
           </header>
 
           <div className="p-6 lg:p-10">
-
             {/* Heading */}
             <div>
               <h1 className="text-2xl font-bold">Settings</h1>
@@ -61,7 +59,6 @@ export default function Settings() {
 
             {/* Settings cards */}
             <div className="mt-7 max-w-4xl space-y-5">
-
               {/* Profile */}
               <SettingsCard
                 icon={<User size={18} />}
@@ -70,11 +67,15 @@ export default function Settings() {
               >
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="text-xs font-medium text-zinc-600">
+                    <label
+                      htmlFor="profile-name"
+                      className="text-xs font-medium text-zinc-600"
+                    >
                       Name
                     </label>
 
                     <input
+                      id="profile-name"
                       type="text"
                       defaultValue="Shivang"
                       className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
@@ -82,11 +83,15 @@ export default function Settings() {
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-zinc-600">
+                    <label
+                      htmlFor="profile-email"
+                      className="text-xs font-medium text-zinc-600"
+                    >
                       Email
                     </label>
 
                     <input
+                      id="profile-email"
                       type="email"
                       defaultValue="shivang@example.com"
                       className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
@@ -102,7 +107,6 @@ export default function Settings() {
                 description="Customize how the AI assistant works."
               >
                 <div className="space-y-4">
-
                   <div className="flex items-center justify-between rounded-lg border border-[#eee7dc] p-4">
                     <div>
                       <p className="text-sm font-medium">
@@ -114,17 +118,29 @@ export default function Settings() {
                       </p>
                     </div>
 
-                    <div className="h-6 w-11 rounded-full bg-[#a66b16] p-1">
+                    <div
+                      role="switch"
+                      aria-checked="true"
+                      aria-label="AI assistance"
+                      className="h-6 w-11 rounded-full bg-[#a66b16] p-1"
+                    >
                       <div className="h-4 w-4 translate-x-5 rounded-full bg-white" />
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-xs font-medium text-zinc-600">
+                    <label
+                      htmlFor="response-style"
+                      className="text-xs font-medium text-zinc-600"
+                    >
                       Response style
                     </label>
 
-                    <select className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]">
+                    <select
+                      id="response-style"
+                      className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
+                      defaultValue="Balanced"
+                    >
                       <option>Balanced</option>
                       <option>Concise</option>
                       <option>Detailed</option>
@@ -140,7 +156,6 @@ export default function Settings() {
                 description="Choose which notifications you receive."
               >
                 <div className="space-y-4">
-
                   <ToggleRow
                     title="AI generation updates"
                     description="Get notified when an AI task is completed."
@@ -155,7 +170,6 @@ export default function Settings() {
                     title="Product updates"
                     description="Receive updates about the assistant."
                   />
-
                 </div>
               </SettingsCard>
 
@@ -166,11 +180,18 @@ export default function Settings() {
                 description="Customize the look of your workspace."
               >
                 <div>
-                  <label className="text-xs font-medium text-zinc-600">
+                  <label
+                    htmlFor="theme"
+                    className="text-xs font-medium text-zinc-600"
+                  >
                     Theme
                   </label>
 
-                  <select className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]">
+                  <select
+                    id="theme"
+                    defaultValue="Light"
+                    className="mt-2 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
+                  >
                     <option>Light</option>
                     <option>Dark</option>
                     <option>System</option>
@@ -184,7 +205,10 @@ export default function Settings() {
                 title="Security"
                 description="Manage account security settings."
               >
-                <button className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm font-medium hover:bg-zinc-50">
+                <button
+                  type="button"
+                  className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm font-medium hover:bg-zinc-50"
+                >
                   Change Password
                 </button>
               </SettingsCard>
@@ -198,11 +222,13 @@ export default function Settings() {
                   Cancel
                 </Link>
 
-                <button className="rounded-lg bg-[#a66b16] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#925c12]">
+                <button
+                  type="button"
+                  className="rounded-lg bg-[#a66b16] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#925c12]"
+                >
                   Save Changes
                 </button>
               </div>
-
             </div>
           </div>
         </section>
@@ -224,7 +250,6 @@ function SettingsCard({
 }) {
   return (
     <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
       <div className="flex items-start gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
           {icon}
@@ -238,10 +263,7 @@ function SettingsCard({
         </div>
       </div>
 
-      <div className="mt-6">
-        {children}
-      </div>
-
+      <div className="mt-6">{children}</div>
     </div>
   );
 }
@@ -255,7 +277,6 @@ function ToggleRow({
 }) {
   return (
     <div className="flex items-center justify-between rounded-lg border border-[#eee7dc] p-4">
-
       <div>
         <p className="text-sm font-medium">{title}</p>
 
@@ -264,10 +285,14 @@ function ToggleRow({
         </p>
       </div>
 
-      <div className="h-6 w-11 rounded-full bg-[#a66b16] p-1">
+      <div
+        role="switch"
+        aria-checked="true"
+        aria-label={title}
+        className="h-6 w-11 rounded-full bg-[#a66b16] p-1"
+      >
         <div className="h-4 w-4 translate-x-5 rounded-full bg-white" />
       </div>
-
     </div>
   );
 }

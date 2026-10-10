@@ -1,10 +1,10 @@
+
 "use client";
 
 import Link from "next/link";
 import {
   Sparkles,
   TrendingUp,
-  TrendingDown,
   BarChart3,
   Clock3,
   FileText,
@@ -93,7 +93,7 @@ export default function Analytics() {
               <h1 className="text-2xl font-bold">Analytics Overview</h1>
 
               <p className="mt-1 text-sm text-zinc-500">
-                Understand how you're using your AI workspace.
+                Understand how you&apos;re using your AI workspace.
               </p>
             </div>
 
@@ -175,7 +175,7 @@ export default function Analytics() {
                 <h3 className="font-semibold">Activity Breakdown</h3>
 
                 <p className="mt-1 text-xs text-zinc-500">
-                  How you're using the assistant
+                  How you&apos;re using the assistant
                 </p>
 
                 <div className="mt-7 space-y-6">

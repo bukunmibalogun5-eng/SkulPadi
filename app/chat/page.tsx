@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Sparkles,
   LayoutDashboard,
@@ -25,71 +27,122 @@ type Message = {
   createdAt: string;
 };
 
+type ChatSnapshot = {
+  messages: string | null;
+  interactionId: string | null;
+};
+
 const welcomeMessage: Message = {
   id: "welcome",
   role: "assistant",
   content:
     "Hello! I'm your AI Content Assistant. I can help you brainstorm ideas, improve your writing, summarize content, and work with your documents.",
-  createdAt: new Date().toISOString(),
+  createdAt: "2026-01-01T00:00:00.000Z",
 };
 
+const CHAT_EVENT = "ai-content-assistant-chat-updated";
+
+function subscribe(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(CHAT_EVENT, callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(CHAT_EVENT, callback);
+  };
+}
+
+function getChatSnapshot(): string {
+  return JSON.stringify({
+    messages: localStorage.getItem("chatMessages"),
+    interactionId: localStorage.getItem("chatInteractionId"),
+  });
+}
+
+function getServerSnapshot(): string {
+  return JSON.stringify({
+    messages: null,
+    interactionId: null,
+  });
+}
+
+function readChatSnapshot(snapshot: string): ChatSnapshot {
+  try {
+    return JSON.parse(snapshot) as ChatSnapshot;
+  } catch {
+    return { messages: null, interactionId: null };
+  }
+}
+
+function readMessages(snapshot: string): Message[] {
+  const saved = readChatSnapshot(snapshot).messages;
+
+  if (saved) {
+    try {
+      const parsed: unknown = JSON.parse(saved);
+
+      if (
+        Array.isArray(parsed) &&
+        parsed.length > 0 &&
+        parsed.every(
+          (message) =>
+            message &&
+            typeof message.id === "string" &&
+            (message.role === "user" ||
+              message.role === "assistant") &&
+            typeof message.content === "string" &&
+            typeof message.createdAt === "string"
+        )
+      ) {
+        return parsed as Message[];
+      }
+    } catch {
+      // Fall back to the welcome message if saved data is invalid.
+    }
+  }
+
+  return [welcomeMessage];
+}
+
+function saveChat(
+  messages: Message[],
+  interactionId: string | null
+) {
+  localStorage.setItem("chatMessages", JSON.stringify(messages));
+
+  if (interactionId) {
+    localStorage.setItem("chatInteractionId", interactionId);
+  } else {
+    localStorage.removeItem("chatInteractionId");
+  }
+
+  window.dispatchEvent(new Event(CHAT_EVENT));
+}
+
+function clearSavedChat() {
+  localStorage.removeItem("chatMessages");
+  localStorage.removeItem("chatInteractionId");
+
+  window.dispatchEvent(new Event(CHAT_EVENT));
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([
-    welcomeMessage,
-  ]);
+  const snapshot = useSyncExternalStore(
+    subscribe,
+    getChatSnapshot,
+    getServerSnapshot
+  );
+
+  const messages = readMessages(snapshot);
+  const interactionId = readChatSnapshot(snapshot).interactionId;
 
   const [input, setInput] = useState("");
   const [isThinking, setIsThinking] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
 
-  /*
-   * Load saved conversation from localStorage.
-   *
-   * We wait until this finishes before allowing the
-   * messages state to be written back to localStorage.
-   */
-  useEffect(() => {
-    const savedMessages = localStorage.getItem("chatMessages");
-
-    if (savedMessages) {
-      try {
-        const parsedMessages: Message[] =
-          JSON.parse(savedMessages);
-
-        if (Array.isArray(parsedMessages) && parsedMessages.length > 0) {
-          setMessages(parsedMessages);
-        }
-      } catch {
-        console.error("Could not load saved chat messages.");
-      }
-    }
-
-    setIsLoaded(true);
-  }, []);
-
-  /*
-   * Save conversation after it has been loaded.
-   *
-   * The isLoaded check prevents the initial welcome message
-   * from overwriting an existing conversation.
-   */
-  useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
-    localStorage.setItem(
-      "chatMessages",
-      JSON.stringify(messages)
-    );
-  }, [messages, isLoaded]);
-
-  function handleSendMessage() {
+  async function handleSendMessage() {
     const trimmedInput = input.trim();
 
-    if (!trimmedInput || isThinking) {
-      return;
-    }
+    if (!trimmedInput || isThinking) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -98,39 +151,72 @@ export default function Chat() {
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((current) => [
-      ...current,
-      userMessage,
-    ]);
+    saveChat([...messages, userMessage], interactionId);
 
     setInput("");
     setIsThinking(true);
 
-    /*
-     * Temporary simulated AI response.
-     *
-     * We will replace this with a real AI API later.
-     */
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: trimmedInput,
+          previousInteractionId: interactionId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Failed to get AI response."
+        );
+      }
+
+      if (typeof data.reply !== "string") {
+        throw new Error("The AI returned an invalid response.");
+      }
+
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: generateResponse(trimmedInput),
+        content: data.reply,
         createdAt: new Date().toISOString(),
       };
 
-      setMessages((current) => [
-        ...current,
-        assistantMessage,
-      ]);
+      const latestMessages = readMessages(getChatSnapshot());
 
+      saveChat(
+        [...latestMessages, assistantMessage],
+        typeof data.interactionId === "string"
+          ? data.interactionId
+          : interactionId
+      );
+    } catch (error) {
+      console.error("Chat error:", error);
+
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content:
+          "Sorry, I couldn't generate a response right now. Please try again.",
+        createdAt: new Date().toISOString(),
+      };
+
+      const latestMessages = readMessages(getChatSnapshot());
+
+      saveChat([...latestMessages, errorMessage], interactionId);
+    } finally {
       setIsThinking(false);
-    }, 900);
+    }
   }
 
   function handleClearChat() {
-    setMessages([welcomeMessage]);
-    localStorage.removeItem("chatMessages");
+    if (isThinking) return;
+    clearSavedChat();
   }
 
   function handleKeyDown(
@@ -138,39 +224,27 @@ export default function Chat() {
   ) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      handleSendMessage();
+      void handleSendMessage();
     }
   }
 
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="flex min-h-screen">
-
         {/* Sidebar */}
         <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-
-          {/* Logo */}
           <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
-
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
               <Sparkles size={19} />
             </div>
 
             <div>
-              <h1 className="text-sm font-bold">
-                AI Content
-              </h1>
-
-              <p className="text-xs text-zinc-500">
-                Assistant
-              </p>
+              <h1 className="text-sm font-bold">AI Content</h1>
+              <p className="text-xs text-zinc-500">Assistant</p>
             </div>
-
           </div>
 
-          {/* Navigation */}
           <nav className="flex-1 space-y-1 px-3 py-5">
-
             <SidebarItem
               icon={<LayoutDashboard size={17} />}
               label="Dashboard"
@@ -213,14 +287,10 @@ export default function Chat() {
               label="Settings"
               href="/settings"
             />
-
           </nav>
 
-          {/* AI Assistant */}
           <div className="border-t border-[#eee7dc] p-4">
-
             <div className="rounded-xl bg-[#fbf4e8] p-4">
-
               <p className="text-xs font-semibold text-[#8a5b16]">
                 AI Assistant
               </p>
@@ -228,35 +298,27 @@ export default function Chat() {
               <p className="mt-1 text-xs leading-5 text-zinc-500">
                 Create smarter content with AI-powered tools.
               </p>
-
             </div>
-
           </div>
-
         </aside>
 
         {/* Main */}
         <section className="flex min-h-screen flex-1 flex-col">
-
           {/* Header */}
           <header className="flex h-20 shrink-0 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
-
             <div>
-              <h2 className="text-lg font-semibold">
-                AI Chat
-              </h2>
-
+              <h2 className="text-lg font-semibold">AI Chat</h2>
               <p className="text-xs text-zinc-500">
                 Chat with your AI content assistant
               </p>
             </div>
 
             <div className="flex items-center gap-3">
-
               <button
                 type="button"
                 onClick={handleClearChat}
-                className="inline-flex items-center gap-2 rounded-lg border border-[#e8dfd0] bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50"
+                disabled={isThinking}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#e8dfd0] bg-white px-3 py-2 text-xs font-medium text-zinc-600 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Trash2 size={14} />
                 Clear Chat
@@ -265,19 +327,14 @@ export default function Chat() {
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
                 SB
               </div>
-
             </div>
-
           </header>
 
           {/* Chat area */}
           <div className="flex flex-1 flex-col">
-
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-6 py-8 lg:px-16">
-
               <div className="mx-auto max-w-4xl space-y-6">
-
                 {messages.map((message) => (
                   <div
                     key={message.id}
@@ -287,72 +344,169 @@ export default function Chat() {
                         : "justify-start"
                     }`}
                   >
-
-                    {/* Assistant icon */}
                     {message.role === "assistant" && (
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                         <Bot size={17} />
                       </div>
                     )}
 
-                    {/* Message */}
                     <div
-                      className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      className={`min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[75%] ${
                         message.role === "user"
-                          ? "rounded-br-md bg-[#a66b16] text-white"
+                          ? "whitespace-pre-wrap rounded-br-md bg-[#a66b16] text-white"
                           : "rounded-bl-md border border-[#e8dfd0] bg-white text-zinc-700"
                       }`}
                     >
-                      {message.content}
+                      {message.role === "assistant" ? (
+                        <div className="break-words">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              h1: ({ children }) => (
+                                <h1 className="mb-3 mt-4 text-xl font-bold leading-7 text-zinc-900 first:mt-0">
+                                  {children}
+                                </h1>
+                              ),
+                              h2: ({ children }) => (
+                                <h2 className="mb-2 mt-4 text-lg font-bold leading-7 text-zinc-900 first:mt-0">
+                                  {children}
+                                </h2>
+                              ),
+                              h3: ({ children }) => (
+                                <h3 className="mb-2 mt-3 text-base font-semibold leading-6 text-zinc-900 first:mt-0">
+                                  {children}
+                                </h3>
+                              ),
+                              p: ({ children }) => (
+                                <p className="mb-3 last:mb-0">
+                                  {children}
+                                </p>
+                              ),
+                              strong: ({ children }) => (
+                                <strong className="font-semibold text-zinc-900">
+                                  {children}
+                                </strong>
+                              ),
+                              em: ({ children }) => (
+                                <em className="italic">{children}</em>
+                              ),
+                              ul: ({ children }) => (
+                                <ul className="mb-3 list-disc space-y-1 pl-5 last:mb-0">
+                                  {children}
+                                </ul>
+                              ),
+                              ol: ({ children }) => (
+                                <ol className="mb-3 list-decimal space-y-1 pl-5 last:mb-0">
+                                  {children}
+                                </ol>
+                              ),
+                              li: ({ children }) => (
+                                <li className="pl-1">{children}</li>
+                              ),
+                              blockquote: ({ children }) => (
+                                <blockquote className="my-3 border-l-4 border-[#d8a35d] pl-3 italic text-zinc-600">
+                                  {children}
+                                </blockquote>
+                              ),
+                              a: ({ href, children }) => {
+                                const safeHref =
+                                  href &&
+                                  /^(https?:|mailto:)/i.test(href)
+                                    ? href
+                                    : undefined;
+
+                                return (
+                                  <a
+                                    href={safeHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#a66b16] underline underline-offset-2"
+                                  >
+                                    {children}
+                                  </a>
+                                );
+                              },
+                              code: ({ children, className }) => (
+                                <code
+                                  className={`rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-800 ${
+                                    className ?? ""
+                                  }`}
+                                >
+                                  {children}
+                                </code>
+                              ),
+                              pre: ({ children }) => (
+                                <pre className="my-3 max-w-full overflow-x-auto whitespace-pre rounded-lg bg-zinc-900 p-3 text-xs leading-5 text-white">
+                                  {children}
+                                </pre>
+                              ),
+                              table: ({ children }) => (
+                                <div className="my-3 max-w-full overflow-x-auto">
+                                  <table className="w-full border-collapse text-left text-xs">
+                                    {children}
+                                  </table>
+                                </div>
+                              ),
+                              th: ({ children }) => (
+                                <th className="border border-[#e8dfd0] bg-[#fbf4e8] px-3 py-2 font-semibold text-zinc-900">
+                                  {children}
+                                </th>
+                              ),
+                              td: ({ children }) => (
+                                <td className="border border-[#e8dfd0] px-3 py-2">
+                                  {children}
+                                </td>
+                              ),
+                              hr: () => (
+                                <hr className="my-4 border-[#e8dfd0]" />
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        message.content
+                      )}
                     </div>
 
-                    {/* User icon */}
                     {message.role === "user" && (
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#d8a35d] text-white">
                         <User size={16} />
                       </div>
                     )}
-
                   </div>
                 ))}
 
                 {/* Thinking indicator */}
                 {isThinking && (
                   <div className="flex items-start gap-3">
-
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                       <Bot size={17} />
                     </div>
 
-                    <div className="rounded-2xl rounded-bl-md border border-[#e8dfd0] bg-white px-4 py-3">
-
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="rounded-2xl rounded-bl-md border border-[#e8dfd0] bg-white px-4 py-3"
+                    >
                       <div className="flex items-center gap-2 text-xs text-zinc-500">
-
                         <LoaderCircle
                           size={14}
                           className="animate-spin"
                         />
-
                         AI is thinking...
-
                       </div>
-
                     </div>
-
                   </div>
                 )}
-
               </div>
-
             </div>
 
             {/* Input area */}
             <div className="border-t border-[#eee7dc] bg-white px-6 py-5 lg:px-16">
-
               <div className="mx-auto max-w-4xl">
-
                 <div className="rounded-xl border border-[#e8dfd0] bg-[#fcfaf6] p-2 shadow-sm">
-
                   <textarea
                     value={input}
                     onChange={(event) =>
@@ -361,51 +515,38 @@ export default function Chat() {
                     onKeyDown={handleKeyDown}
                     placeholder="Ask your AI assistant anything..."
                     rows={3}
+                    aria-label="Message your AI assistant"
                     className="w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-zinc-400"
                   />
 
                   <div className="flex items-center justify-between border-t border-[#eee7dc] px-2 pt-2">
-
                     <p className="text-xs text-zinc-400">
                       Press Enter to send • Shift + Enter for a new line
                     </p>
 
                     <button
                       type="button"
-                      onClick={handleSendMessage}
+                      onClick={() => void handleSendMessage()}
                       disabled={!input.trim() || isThinking}
                       className="inline-flex items-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2 text-xs font-medium text-white transition hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Send size={14} />
                       Send
                     </button>
-
                   </div>
-
                 </div>
 
                 <p className="mt-3 text-center text-[11px] text-zinc-400">
-                  AI responses are currently simulated. Real AI
-                  integration will be connected next.
+                  AI responses are generated by Gemini.
                 </p>
-
               </div>
-
             </div>
-
           </div>
-
         </section>
-
       </div>
     </main>
   );
 }
-
-
-/* -------------------------------- */
-/* Sidebar Item                     */
-/* -------------------------------- */
 
 function SidebarItem({
   icon,
@@ -431,40 +572,4 @@ function SidebarItem({
       {label}
     </Link>
   );
-}
-
-
-/* -------------------------------- */
-/* Temporary AI Response            */
-/* -------------------------------- */
-
-function generateResponse(message: string) {
-  const lowerMessage = message.toLowerCase();
-
-  if (
-    lowerMessage.includes("hello") ||
-    lowerMessage.includes("hi")
-  ) {
-    return "Hello! What would you like to work on today?";
-  }
-
-  if (
-    lowerMessage.includes("summarize") ||
-    lowerMessage.includes("summary")
-  ) {
-    return "I can help summarize your content. Once document processing is connected, you will be able to select a document and have me summarize it directly.";
-  }
-
-  if (
-    lowerMessage.includes("write") ||
-    lowerMessage.includes("content")
-  ) {
-    return "Absolutely. Tell me what you want to create, who it is for, and the tone you want, and I can help structure the content.";
-  }
-
-  if (lowerMessage.includes("document")) {
-    return "Your Documents section is ready for uploads. Once the AI backend is connected, I will be able to work directly with those documents.";
-  }
-
-  return "I understand. This chat interface is working, but the real AI model has not been connected yet. The next step will be connecting this conversation to an AI API.";
 }

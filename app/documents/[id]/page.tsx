@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -39,59 +39,60 @@ type Analysis = {
   recommendations: string[];
 };
 
+function subscribeToDocuments(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener("documentsUpdated", callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("documentsUpdated", callback);
+  };
+}
+
+function getDocumentsSnapshot() {
+  return localStorage.getItem("documents");
+}
+
+function getDocumentsServerSnapshot() {
+  return null;
+}
+
 export default function DocumentDetails() {
   const params = useParams();
   const documentId = params.id as string;
 
-  const [document, setDocument] =
-    useState<DocumentItem | null>(null);
+  const savedDocuments = useSyncExternalStore(
+    subscribeToDocuments,
+    getDocumentsSnapshot,
+    getDocumentsServerSnapshot
+  );
 
-  const [isSummarizing, setIsSummarizing] =
-    useState(false);
-
-  const [summary, setSummary] = useState("");
-
-  const [showQuestions, setShowQuestions] =
-    useState(false);
-
-  const [question, setQuestion] = useState("");
-
-  const [questionMessages, setQuestionMessages] =
-    useState<QuestionMessage[]>([]);
-
-  const [isAnswering, setIsAnswering] =
-    useState(false);
-
-  const [isAnalyzing, setIsAnalyzing] =
-    useState(false);
-
-  const [analysis, setAnalysis] =
-    useState<Analysis | null>(null);
-
-  useEffect(() => {
-    const savedDocuments =
-      localStorage.getItem("documents");
-
+  const document = useMemo(() => {
     if (!savedDocuments) {
-      return;
+      return null;
     }
 
     try {
-      const documents: DocumentItem[] =
-        JSON.parse(savedDocuments);
+      const documents: DocumentItem[] = JSON.parse(savedDocuments);
 
-      const foundDocument = documents.find(
-        (item) => item.id === documentId
+      return (
+        documents.find((item) => item.id === documentId) ?? null
       );
-
-      setDocument(foundDocument || null);
     } catch (error) {
-      console.error(
-        "Could not load documents:",
-        error
-      );
+      console.error("Could not load documents:", error);
+      return null;
     }
-  }, [documentId]);
+  }, [savedDocuments, documentId]);
+
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [showQuestions, setShowQuestions] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [questionMessages, setQuestionMessages] =
+    useState<QuestionMessage[]>([]);
+  const [isAnswering, setIsAnswering] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   function handleSummarize() {
     if (!document || isSummarizing) {
@@ -139,11 +140,7 @@ The AI summarization workflow is currently being simulated. Once the application
       content: trimmedQuestion,
     };
 
-    setQuestionMessages((current) => [
-      ...current,
-      userMessage,
-    ]);
-
+    setQuestionMessages((current) => [...current, userMessage]);
     setQuestion("");
     setIsAnswering(true);
 
@@ -151,10 +148,7 @@ The AI summarization workflow is currently being simulated. Once the application
       const assistantMessage: QuestionMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
-        content: generateDocumentAnswer(
-          trimmedQuestion,
-          document
-        ),
+        content: generateDocumentAnswer(trimmedQuestion, document),
       };
 
       setQuestionMessages((current) => [
@@ -169,10 +163,7 @@ The AI summarization workflow is currently being simulated. Once the application
   function handleQuestionKeyDown(
     event: React.KeyboardEvent<HTMLTextAreaElement>
   ) {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleSendQuestion();
     }
@@ -251,7 +242,6 @@ The AI summarization workflow is currently being simulated. Once the application
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
       <div className="mx-auto max-w-5xl px-6 py-10">
-
         {/* Back */}
         <Link
           href="/documents"
@@ -280,7 +270,6 @@ The AI summarization workflow is currently being simulated. Once the application
 
         {/* Information + Actions */}
         <div className="mt-8 grid gap-6 lg:grid-cols-3">
-
           {/* Information */}
           <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 lg:col-span-2">
             <h2 className="text-sm font-semibold">
@@ -317,7 +306,6 @@ The AI summarization workflow is currently being simulated. Once the application
             </h2>
 
             <div className="mt-5 space-y-3">
-
               {/* Summarize */}
               <button
                 type="button"
@@ -404,7 +392,6 @@ The AI summarization workflow is currently being simulated. Once the application
                   </p>
                 </div>
               </button>
-
             </div>
           </div>
         </div>
@@ -412,9 +399,7 @@ The AI summarization workflow is currently being simulated. Once the application
         {/* Summary */}
         {summary !== "" && (
           <div className="mt-6 rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
             <div className="flex items-start justify-between">
-
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                   <Sparkles size={17} />
@@ -434,11 +419,11 @@ The AI summarization workflow is currently being simulated. Once the application
               <button
                 type="button"
                 onClick={handleCloseSummary}
+                aria-label="Close summary"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
               >
                 <X size={16} />
               </button>
-
             </div>
 
             <div className="mt-5 rounded-lg bg-[#fcfaf6] p-5">
@@ -446,16 +431,13 @@ The AI summarization workflow is currently being simulated. Once the application
                 {summary}
               </p>
             </div>
-
           </div>
         )}
 
         {/* Analysis */}
         {analysis && (
           <div className="mt-6 rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-
             <div className="flex items-start justify-between">
-
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                   <FileSearch size={17} />
@@ -475,16 +457,15 @@ The AI summarization workflow is currently being simulated. Once the application
               <button
                 type="button"
                 onClick={handleCloseAnalysis}
+                aria-label="Close analysis"
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
               >
                 <X size={16} />
               </button>
-
             </div>
 
             {/* Category + Purpose */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-
               <div className="rounded-lg bg-[#fcfaf6] p-4">
                 <p className="text-xs text-zinc-500">
                   Document Category
@@ -504,7 +485,6 @@ The AI summarization workflow is currently being simulated. Once the application
                   {analysis.purpose}
                 </p>
               </div>
-
             </div>
 
             {/* Topics */}
@@ -532,22 +512,20 @@ The AI summarization workflow is currently being simulated. Once the application
               </h3>
 
               <div className="mt-3 space-y-2">
-                {analysis.insights.map(
-                  (insight, index) => (
-                    <div
-                      key={index}
-                      className="flex gap-3 rounded-lg bg-[#fcfaf6] p-3"
-                    >
-                      <span className="mt-1 text-[#a66b16]">
-                        •
-                      </span>
+                {analysis.insights.map((insight, index) => (
+                  <div
+                    key={index}
+                    className="flex gap-3 rounded-lg bg-[#fcfaf6] p-3"
+                  >
+                    <span className="mt-1 text-[#a66b16]">
+                      •
+                    </span>
 
-                      <p className="text-sm leading-6 text-zinc-700">
-                        {insight}
-                      </p>
-                    </div>
-                  )
-                )}
+                    <p className="text-sm leading-6 text-zinc-700">
+                      {insight}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -580,23 +558,20 @@ The AI summarization workflow is currently being simulated. Once the application
 
             <div className="mt-5 rounded-lg border border-dashed border-[#e2d6c4] bg-[#fcfaf6] p-4">
               <p className="text-xs leading-5 text-zinc-500">
-                This analysis is currently simulated. Once
-                document extraction and the real AI model are
-                connected, these insights will be generated
-                from the actual contents of the document.
+                This analysis is currently simulated. Once document
+                extraction and the real AI model are connected, these
+                insights will be generated from the actual contents
+                of the document.
               </p>
             </div>
-
           </div>
         )}
 
         {/* Ask Questions */}
         {showQuestions && (
           <div className="mt-6 rounded-xl border border-[#e8dfd0] bg-white shadow-sm">
-
             {/* Chat header */}
             <div className="flex items-center justify-between border-b border-[#eee7dc] px-6 py-4">
-
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                   <MessageCircle size={17} />
@@ -614,7 +589,6 @@ The AI summarization workflow is currently being simulated. Once the application
               </div>
 
               <div className="flex items-center gap-2">
-
                 <button
                   type="button"
                   onClick={handleClearQuestions}
@@ -627,17 +601,16 @@ The AI summarization workflow is currently being simulated. Once the application
                 <button
                   type="button"
                   onClick={handleCloseQuestions}
+                  aria-label="Close questions"
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-50 hover:text-zinc-700"
                 >
                   <X size={16} />
                 </button>
-
               </div>
             </div>
 
             {/* Messages */}
             <div className="min-h-[250px] max-h-[450px] space-y-5 overflow-y-auto px-6 py-6">
-
               {questionMessages.length === 0 && (
                 <div className="flex min-h-[200px] items-center justify-center text-center">
                   <div>
@@ -650,8 +623,8 @@ The AI summarization workflow is currently being simulated. Once the application
                     </h3>
 
                     <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-zinc-500">
-                      Ask a question about the document and
-                      the AI assistant will respond.
+                      Ask a question about the document and the AI
+                      assistant will respond.
                     </p>
                   </div>
                 </div>
@@ -666,7 +639,6 @@ The AI summarization workflow is currently being simulated. Once the application
                       : "justify-start"
                   }`}
                 >
-
                   {message.role === "assistant" && (
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
                       <Bot size={15} />
@@ -688,7 +660,6 @@ The AI summarization workflow is currently being simulated. Once the application
                       <User size={14} />
                     </div>
                   )}
-
                 </div>
               ))}
 
@@ -709,14 +680,11 @@ The AI summarization workflow is currently being simulated. Once the application
                   </div>
                 </div>
               )}
-
             </div>
 
             {/* Input */}
             <div className="border-t border-[#eee7dc] p-4">
-
               <div className="rounded-xl border border-[#e8dfd0] bg-[#fcfaf6] p-2">
-
                 <textarea
                   value={question}
                   onChange={(event) =>
@@ -729,7 +697,6 @@ The AI summarization workflow is currently being simulated. Once the application
                 />
 
                 <div className="flex items-center justify-between border-t border-[#eee7dc] px-2 pt-2">
-
                   <p className="text-[11px] text-zinc-400">
                     Enter to send • Shift + Enter for a new line
                   </p>
@@ -737,23 +704,18 @@ The AI summarization workflow is currently being simulated. Once the application
                   <button
                     type="button"
                     onClick={handleSendQuestion}
-                    disabled={
-                      !question.trim() ||
-                      isAnswering
-                    }
+                    disabled={!question.trim() || isAnswering}
                     className="inline-flex items-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2 text-xs font-medium text-white hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Send size={14} />
                     Send
                   </button>
-
                 </div>
               </div>
 
               <p className="mt-2 text-center text-[10px] text-zinc-400">
                 Document questions are currently simulated.
               </p>
-
             </div>
           </div>
         )}
@@ -770,11 +732,10 @@ The AI summarization workflow is currently being simulated. Once the application
           </h2>
 
           <p className="mt-1 text-xs text-zinc-500">
-            Document preview and content extraction will
-            be connected in the next stage.
+            Document preview and content extraction will be
+            connected in the next stage.
           </p>
         </div>
-
       </div>
     </main>
   );
@@ -809,19 +770,11 @@ function getDocumentCategory(type: string) {
     return "Text Document";
   }
 
-  if (
-    type === "XLS" ||
-    type === "XLSX" ||
-    type === "CSV"
-  ) {
+  if (type === "XLS" || type === "XLSX" || type === "CSV") {
     return "Spreadsheet";
   }
 
-  if (
-    type === "PNG" ||
-    type === "JPG" ||
-    type === "JPEG"
-  ) {
+  if (type === "PNG" || type === "JPG" || type === "JPEG") {
     return "Image";
   }
 
@@ -858,56 +811,26 @@ function getDocumentTopics(name: string) {
   const lowerName = name.toLowerCase();
 
   if (lowerName.includes("marketing")) {
-    return [
-      "Marketing",
-      "Strategy",
-      "Planning",
-      "Content",
-    ];
+    return ["Marketing", "Strategy", "Planning", "Content"];
   }
 
   if (lowerName.includes("sales")) {
-    return [
-      "Sales",
-      "Performance",
-      "Reporting",
-      "Business",
-    ];
+    return ["Sales", "Performance", "Reporting", "Business"];
   }
 
   if (lowerName.includes("research")) {
-    return [
-      "Research",
-      "Analysis",
-      "Products",
-      "Insights",
-    ];
+    return ["Research", "Analysis", "Products", "Insights"];
   }
 
   if (lowerName.includes("calendar")) {
-    return [
-      "Planning",
-      "Content",
-      "Scheduling",
-      "Organization",
-    ];
+    return ["Planning", "Content", "Scheduling", "Organization"];
   }
 
   if (lowerName.includes("brand")) {
-    return [
-      "Brand",
-      "Guidelines",
-      "Identity",
-      "Content",
-    ];
+    return ["Brand", "Guidelines", "Identity", "Content"];
   }
 
-  return [
-    "Documents",
-    "Information",
-    "Analysis",
-    "Content",
-  ];
+  return ["Documents", "Information", "Analysis", "Content"];
 }
 
 function generateDocumentAnswer(
