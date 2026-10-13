@@ -1,78 +1,39 @@
-
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  LayoutDashboard,
-  Plus,
-  FileText,
-  MessageCircle,
-  PanelsTopLeft,
-  BarChart3,
-  Settings,
-  Upload,
-  FilePlus2,
-  Sparkles,
-  TrendingUp,
-  Clock3,
+  BookOpen,
+  CalendarDays,
   ChevronRight,
+  FileText,
   FolderOpen,
+  GraduationCap,
+  Plus,
+  Sparkles,
+  Flame,
+  LoaderCircle,
+  AlertCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-type Project = {
+type Course = {
   id: string;
   name: string;
   description: string | null;
-  type: string;
-  aiEnabled: boolean;
-  createdAt: string;
+  category: string;
+  created_at: string;
 };
 
-const defaultStats = [
-  {
-    label: "Total Projects",
-    value: "0",
-    change: "Projects created",
-    icon: FileText,
-  },
-  {
-    label: "Documents",
-    value: "156",
-    change: "15% this week",
-    icon: FileText,
-  },
-  {
-    label: "AI Generations",
-    value: "1,248",
-    change: "32% this week",
-    icon: Sparkles,
-  },
-  {
-    label: "Hours Saved",
-    value: "48",
-    change: "25% this week",
-    icon: Clock3,
-  },
-];
-
-const quickActions = [
-  { title: "Chat with AI", icon: MessageCircle, href: "/chat" },
-  { title: "Upload Document", icon: Upload, href: "/documents" },
-  { title: "Create Template", icon: FilePlus2, href: "/templates" },
-  { title: "Analyze Data", icon: BarChart3, href: "/analytics" },
-];
-
 export default function Home() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-  const [projectError, setProjectError] = useState("");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadProjects() {
+    async function loadCourses() {
       try {
         const supabase = createClient();
 
@@ -82,439 +43,311 @@ export default function Home() {
         } = await supabase.auth.getUser();
 
         if (authError || !user) {
-          throw new Error(
-            "Please sign in again to load your projects."
-          );
+          throw new Error("Please sign in again to view your courses.");
         }
 
-        const { data, error } = await supabase
+        // Reuse existing project records as course folders.
+        const { data, error: queryError } = await supabase
           .from("projects")
-          .select(
-            "id, name, description, category, ai_enabled, created_at"
-          )
+          .select("id, name, description, category, created_at")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        if (error) {
-          throw error;
-        }
+        if (queryError) throw queryError;
 
         if (!cancelled) {
-          setProjects(
-            (data ?? []).map((project) => ({
-              id: project.id,
-              name: project.name,
-              description: project.description,
-              type: project.category,
-              aiEnabled: project.ai_enabled,
-              createdAt: project.created_at,
-            }))
-          );
+          setCourses(data ?? []);
         }
-      } catch (error) {
-        console.error("Failed to load projects:", error);
-
+      } catch (err) {
+        console.error("Failed to load courses:", err);
         if (!cancelled) {
-          setProjectError(
-            "Unable to load your projects. Please refresh the page."
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to load your courses. Please refresh."
           );
         }
       } finally {
-        if (!cancelled) {
-          setIsLoadingProjects(false);
-        }
+        if (!cancelled) setIsLoading(false);
       }
     }
 
-    loadProjects();
+    loadCourses();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const stats = useMemo(
-    () =>
-      defaultStats.map((stat) =>
-        stat.label === "Total Projects"
-          ? { ...stat, value: String(projects.length) }
-          : stat
-      ),
-    [projects.length]
-  );
-
   return (
-    <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-          {/* Logo */}
-          <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
-              <Sparkles size={19} />
+        <aside className="hidden w-64 shrink-0 flex-col border-r border-blue-100 bg-white lg:flex">
+          <Link
+            href="/"
+            className="flex h-20 items-center gap-3 border-b border-blue-100 px-6"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 text-white">
+              <GraduationCap size={23} />
             </div>
-
             <div>
-              <h1 className="text-sm font-bold">AI Content</h1>
-              <p className="text-xs text-zinc-500">Assistant</p>
+              <p className="text-lg font-bold tracking-tight text-blue-950">
+                SkulPadi
+              </p>
+              <p className="text-xs text-slate-500">
+                Your learning companion
+              </p>
             </div>
-          </div>
+          </Link>
 
-          {/* Navigation */}
-          <nav className="flex-1 space-y-1 px-3 py-5">
-            <SidebarItem
-              icon={<LayoutDashboard size={17} />}
-              label="Dashboard"
+          <nav className="flex-1 space-y-2 p-4">
+            <Link
               href="/"
-              active
-            />
-
-            <SidebarItem
-              icon={<Plus size={17} />}
-              label="New Project"
-              href="/new-project"
-            />
-
-            <SidebarItem
-              icon={<FileText size={17} />}
-              label="Documents"
+              className="flex items-center gap-3 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800"
+            >
+              <BookOpen size={18} />
+              My courses
+            </Link>
+            <Link
               href="/documents"
-            />
-
-            <SidebarItem
-              icon={<MessageCircle size={17} />}
-              label="AI Chat"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
+            >
+              <FileText size={18} />
+              My documents
+            </Link>
+            <Link
               href="/chat"
-            />
-
-            <SidebarItem
-              icon={<PanelsTopLeft size={17} />}
-              label="Templates"
-              href="/templates"
-            />
-
-            <SidebarItem
-              icon={<BarChart3 size={17} />}
-              label="Analytics"
-              href="/analytics"
-            />
-
-            <SidebarItem
-              icon={<Settings size={17} />}
-              label="Settings"
-              href="/settings"
-            />
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
+            >
+              <Sparkles size={18} />
+              AI study chat
+            </Link>
           </nav>
 
-          {/* AI Assistant */}
-          <div className="border-t border-[#eee7dc] p-4">
-            <div className="rounded-xl bg-[#fbf4e8] p-4">
-              <p className="text-xs font-semibold text-[#8a5b16]">
-                AI Assistant
-              </p>
-
-              <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Create smarter content with AI-powered tools.
-              </p>
-            </div>
+          <div className="m-4 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 p-4 text-white">
+            <Sparkles size={20} />
+            <p className="mt-3 text-sm font-semibold">
+              Learn at your pace
+            </p>
+            <p className="mt-1 text-xs leading-5 text-blue-100">
+              Turn your lecture materials into a study experience that works
+              for you.
+            </p>
           </div>
         </aside>
 
-        {/* Main */}
-        <section className="flex-1">
-          {/* Header */}
-          <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
+        {/* Main content */}
+        <section className="min-w-0 flex-1">
+          <header className="flex min-h-20 items-center justify-between gap-4 border-b border-blue-100 bg-white px-5 sm:px-8 lg:px-10">
             <div>
-              <h2 className="text-lg font-semibold">Dashboard</h2>
-              <p className="text-xs text-zinc-500">
-                Your AI workspace at a glance
-              </p>
+              <p className="text-sm text-slate-500">Your learning space</p>
+              <h1 className="text-xl font-bold text-blue-950 sm:text-2xl">
+                My courses
+              </h1>
             </div>
 
-            <div className="flex items-center gap-3">
-              <Link
-                href="/new-project"
-                className="rounded-lg bg-[#a66b16] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#8e5a12]"
-              >
-                + New Project
-              </Link>
-
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
-                SB
-              </div>
-            </div>
+            <Link
+              href="/new-project"
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
+            >
+              <Plus size={17} />
+              <span className="hidden sm:inline">Add course</span>
+              <span className="sm:hidden">Add</span>
+            </Link>
           </header>
 
-          {/* Dashboard Content */}
-          <div className="p-6 lg:p-10">
-            {/* Welcome */}
-            <div className="mb-7">
-              <h3 className="text-2xl font-bold tracking-tight">
-                Welcome back! 👋
-              </h3>
-
-              <p className="mt-1 text-sm text-zinc-500">
-                Here&apos;s what&apos;s happening with your projects.
-              </p>
+          <div className="mx-auto max-w-7xl p-5 sm:p-8 lg:p-10">
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-800 via-blue-700 to-indigo-700 p-6 text-white sm:p-9">
+              <div className="relative z-10 max-w-2xl">
+                <p className="text-sm font-medium text-blue-100">
+                  YOUR LECTURES. YOUR LEARNING. YOUR PADI.
+                </p>
+                <h2 className="mt-3 text-2xl font-bold leading-tight sm:text-4xl">
+                  Ready to make your next study session count?
+                </h2>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
+                  Keep your courses organised, learn from your materials, and
+                  test what you know—all in one place.
+                </p>
+                <Link
+                  href="/new-project"
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-blue-800 transition hover:bg-blue-50"
+                >
+                  Create a course
+                  <ChevronRight size={17} />
+                </Link>
+              </div>
+              <GraduationCap
+                className="absolute -bottom-8 -right-5 hidden text-white/10 sm:block"
+                size={210}
+                strokeWidth={1.2}
+              />
             </div>
 
-            {/* Stats */}
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.map((stat) => {
-                const Icon = stat.icon;
-
-                return (
-                  <div
-                    key={stat.label}
-                    className="rounded-xl border border-[#e8dfd0] bg-white p-5 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-zinc-500">
-                        {stat.label}
-                      </p>
-
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                        <Icon size={16} />
-                      </div>
-                    </div>
-
-                    <p className="mt-4 text-2xl font-bold">
-                      {stat.value}
-                    </p>
-
-                    <div className="mt-2 flex items-center gap-1 text-xs text-green-600">
-                      <TrendingUp size={13} />
-                      {stat.change}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Middle Section */}
-            <div className="mt-6 grid gap-6 xl:grid-cols-2">
-              {/* Recent Activity */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
+            {/* Summary cards */}
+            <div className="mt-7 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-semibold">Recent Activity</h4>
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Your latest AI workspace activity
+                    <p className="text-sm text-slate-500">Your courses</p>
+                    <p className="mt-2 text-3xl font-bold text-blue-950">
+                      {isLoading ? "—" : courses.length}
                     </p>
                   </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                    <FolderOpen size={22} />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  Existing workspaces included
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">Study activity</p>
+                    <p className="mt-2 text-lg font-bold text-blue-950">
+                      Build your streak
+                    </p>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
+                    <Flame size={22} />
+                  </div>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Your activity calendar will reflect real study sessions,
+                  not just logins.
+                </p>
+              </div>
+            </div>
+
+            {/* Course folders */}
+            <div className="mt-9">
+              <div className="mb-5 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-blue-950">
+                    Your course folders
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Open a course to choose Learn or Quiz.
+                  </p>
+                </div>
+                <CalendarDays
+                  className="hidden text-blue-600 sm:block"
+                  size={24}
+                />
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-white py-16 text-sm text-slate-500">
+                  <LoaderCircle className="animate-spin" size={19} />
+                  Loading your courses...
+                </div>
+              ) : error ? (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 shrink-0" size={19} />
+                  <div>
+                    <p className="font-semibold">We couldn’t load your courses.</p>
+                    <p className="mt-1">{error}</p>
+                  </div>
+                </div>
+              ) : courses.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-blue-200 bg-white px-6 py-14 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                    <BookOpen size={27} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-bold text-blue-950">
+                    Your study space starts here
+                  </h3>
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    Create a course folder for a subject, such as CPE 410 or
+                    EEG 432. You can organise your learning around each course.
+                  </p>
+                  <Link
+                    href="/new-project"
+                    className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800"
+                  >
+                    <Plus size={17} />
+                    Create your first course
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {courses.map((course, index) => {
+                    const accents = [
+                      "bg-blue-50 text-blue-700",
+                      "bg-indigo-50 text-indigo-700",
+                      "bg-sky-50 text-sky-700",
+                    ];
+                    const accent = accents[index % accents.length];
+
+                    return (
+                      <Link
+                        key={course.id}
+                        href={`/courses/${course.id}`}
+                        className="group rounded-2xl border border-blue-100 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-blue-300 hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div
+                            className={`flex h-12 w-12 items-center justify-center rounded-xl ${accent}`}
+                          >
+                            <FolderOpen size={23} />
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">
+                            Course folder
+                          </span>
+                        </div>
+
+                        <h3 className="mt-5 truncate text-lg font-bold text-blue-950">
+                          {course.name}
+                        </h3>
+                        <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500">
+                          {course.description?.trim() ||
+                            "Your lecture materials and study sessions belong here."}
+                        </p>
+
+                        <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
+                          <span className="text-sm font-medium text-blue-700">
+                            Open course
+                          </span>
+                          <ChevronRight
+                            size={18}
+                            className="text-blue-600 transition group-hover:translate-x-1"
+                          />
+                        </div>
+                      </Link>
+                    );
+                  })}
 
                   <Link
                     href="/new-project"
-                    className="flex items-center gap-1 text-xs font-medium text-[#a66b16]"
+                    className="flex min-h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/50 p-6 text-center transition hover:border-blue-400 hover:bg-blue-50"
                   >
-                    New project
-                    <ChevronRight size={14} />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm">
+                      <Plus size={23} />
+                    </div>
+                    <p className="mt-4 font-semibold text-blue-950">
+                      Add another course
+                    </p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Create a folder for another subject
+                    </p>
                   </Link>
                 </div>
-
-                <div className="mt-6 space-y-4">
-                  {isLoadingProjects ? (
-                    <p className="py-4 text-sm text-zinc-500">
-                      Loading your projects...
-                    </p>
-                  ) : projectError ? (
-                    <p
-                      role="alert"
-                      className="py-4 text-sm text-red-600"
-                    >
-                      {projectError}
-                    </p>
-                  ) : projects.length > 0 ? (
-                    projects.slice(0, 3).map((project) => (
-                      <div
-                        key={project.id}
-                        className="flex items-center gap-4 rounded-lg border border-[#f0e9de] p-3"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                          <FolderOpen size={16} />
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">
-                            {project.name}
-                          </p>
-
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {project.type} Project •{" "}
-                            {formatTimeAgo(project.createdAt)}
-                          </p>
-
-                          {project.description && (
-                            <p className="mt-1 truncate text-xs text-zinc-400">
-                              {project.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-6 text-center">
-                      <FolderOpen
-                        className="mx-auto text-zinc-400"
-                        size={28}
-                      />
-
-                      <p className="mt-3 text-sm font-medium">
-                        No projects yet
-                      </p>
-
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Create your first project to see it here.
-                      </p>
-
-                      <Link
-                        href="/new-project"
-                        className="mt-4 inline-block text-sm font-medium text-[#a66b16] hover:underline"
-                      >
-                        Create a project
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Usage Overview */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <div>
-                  <h4 className="font-semibold">Usage Overview</h4>
-                  <p className="mt-1 text-xs text-zinc-500">
-                    AI usage during the week
-                  </p>
-                </div>
-
-                <div className="mt-8 flex h-48 items-end justify-between gap-3">
-                  {[35, 48, 55, 72, 58, 78, 92].map(
-                    (height, index) => (
-                      <div
-                        key={index}
-                        className="flex h-full flex-1 items-end"
-                      >
-                        <div
-                          className="w-full rounded-t-md bg-[#d8a35d]"
-                          style={{ height: `${height}%` }}
-                        />
-                      </div>
-                    )
-                  )}
-                </div>
-
-                <div className="mt-3 flex justify-between text-xs text-zinc-400">
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
-                </div>
-              </div>
+              )}
             </div>
 
-            {/* Quick Actions */}
-            <div className="mt-6">
-              <h4 className="mb-4 font-semibold">Quick Actions</h4>
-
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                {quickActions.map((action) => {
-                  const Icon = action.icon;
-
-                  return (
-                    <Link
-                      key={action.title}
-                      href={action.href}
-                      className="flex items-center gap-3 rounded-xl border border-[#e8dfd0] bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#d8a35d]"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                        <Icon size={17} />
-                      </div>
-
-                      <span className="text-sm font-medium">
-                        {action.title}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="mt-10 text-center text-xs text-slate-400">
+              SkulPadi · Study smarter, one course at a time.
+            </p>
           </div>
         </section>
       </div>
     </main>
-  );
-}
-
-function formatTimeAgo(dateString: string) {
-  const createdAt = new Date(dateString);
-
-  if (Number.isNaN(createdAt.getTime())) {
-    return "recently";
-  }
-
-  const difference = Math.max(
-    0,
-    Math.floor((Date.now() - createdAt.getTime()) / 1000)
-  );
-
-  if (difference < 60) {
-    return "just now";
-  }
-
-  const minutes = Math.floor(difference / 60);
-
-  if (minutes < 60) {
-    return `${minutes} min ago`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-
-  if (hours < 24) {
-    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  }
-
-  const days = Math.floor(hours / 24);
-
-  if (days < 30) {
-    return `${days} day${days === 1 ? "" : "s"} ago`;
-  }
-
-  const months = Math.floor(days / 30);
-
-  if (months < 12) {
-    return `${months} month${months === 1 ? "" : "s"} ago`;
-  }
-
-  const years = Math.floor(months / 12);
-
-  return `${years} year${years === 1 ? "" : "s"} ago`;
-}
-
-function SidebarItem({
-  icon,
-  label,
-  href,
-  active = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
-  active?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-        active
-          ? "bg-[#fbf1df] font-semibold text-[#9a6317]"
-          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
-      }`}
-    >
-      {icon}
-      {label}
-    </Link>
   );
 }

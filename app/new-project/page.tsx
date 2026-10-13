@@ -4,30 +4,27 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Sparkles,
   ArrowLeft,
-  FileText,
-  Bot,
-  FolderOpen,
+  BookOpen,
   Check,
+  GraduationCap,
+  LoaderCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function NewProject() {
   const router = useRouter();
 
-  const [projectName, setProjectName] = useState("");
+  const [courseName, setCourseName] = useState("");
   const [description, setDescription] = useState("");
-  const [projectType, setProjectType] = useState("Content");
-  const [aiEnabled, setAiEnabled] = useState(true);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  async function handleCreateProject() {
+  async function handleCreateCourse() {
     setError("");
 
-    if (!projectName.trim()) {
-      setError("Please enter a project name.");
+    if (!courseName.trim()) {
+      setError("Enter a course name, such as CPE 410.");
       return;
     }
 
@@ -44,336 +41,170 @@ export default function NewProject() {
       } = await supabase.auth.getUser();
 
       if (authError || !user) {
-        setError("Your session has expired. Please log in again.");
+        setError("Your session has expired. Please sign in again.");
         return;
       }
 
-      const { error: insertError } = await supabase
+      const { data, error: insertError } = await supabase
         .from("projects")
         .insert({
           user_id: user.id,
-          name: projectName.trim(),
-          description: description.trim(),
-          category: projectType,
+          name: courseName.trim(),
+          description: description.trim() || null,
+          category: "Course",
           status: "active",
-          ai_enabled: aiEnabled,
-        });
+          ai_enabled: true,
+        })
+        .select("id")
+        .single();
 
       if (insertError) {
-        console.error("Supabase project insert error:", insertError);
-        setError("Unable to save your project. Please try again.");
+        console.error("Supabase course creation error:", insertError);
+        setError("We couldn't create this course. Please try again.");
         return;
       }
 
+      // Return to the dashboard; the new course is loaded from Supabase.
       router.push("/");
+      router.refresh();
     } catch (err) {
-      console.error("Failed to create project:", err);
-      setError("Something went wrong while creating the project.");
+      console.error("Failed to create course:", err);
+      setError("Something went wrong while creating your course.");
     } finally {
       setIsSaving(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
-      <div className="flex min-h-screen">
-        {/* Sidebar */}
-        <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-          <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
-              <Sparkles size={19} />
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="border-b border-blue-100 bg-white">
+        <div className="mx-auto flex h-20 max-w-5xl items-center justify-between px-5 sm:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 text-white">
+              <GraduationCap size={23} />
             </div>
-
             <div>
-              <h1 className="text-sm font-bold">AI Content</h1>
-              <p className="text-xs text-zinc-500">Assistant</p>
+              <p className="text-lg font-bold text-blue-950">SkulPadi</p>
+              <p className="text-xs text-slate-500">Your learning companion</p>
             </div>
+          </Link>
+
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-blue-700"
+          >
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">Back to dashboard</span>
+            <span className="sm:hidden">Back</span>
+          </Link>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
+        <div className="mb-8">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
+            <BookOpen size={28} />
+          </div>
+          <p className="mt-6 text-sm font-semibold text-blue-700">
+            YOUR NEXT STUDY SPACE
+          </p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-blue-950 sm:text-4xl">
+            Create a course
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
+            Create a folder for a subject. You’ll be able to keep its lecture
+            materials and study activities organised in one place.
+          </p>
+        </div>
+
+        <div className="space-y-6 rounded-3xl border border-blue-100 bg-white p-5 shadow-sm sm:p-8">
+          <div>
+            <label
+              htmlFor="course-name"
+              className="block text-sm font-semibold text-slate-800"
+            >
+              Course name or code <span className="text-red-500">*</span>
+            </label>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Use the name you recognise from your timetable.
+            </p>
+            <input
+              id="course-name"
+              type="text"
+              value={courseName}
+              onChange={(event) => setCourseName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !isSaving) {
+                  event.preventDefault();
+                  void handleCreateCourse();
+                }
+              }}
+              placeholder="e.g. CPE 410 — Computer Engineering"
+              maxLength={100}
+              disabled={isSaving}
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:opacity-60"
+            />
           </div>
 
-          <nav className="flex-1 space-y-1 px-3 py-5">
-            <SidebarItem label="Dashboard" href="/" />
-            <SidebarItem
-              label="New Project"
-              href="/new-project"
-              active
+          <div>
+            <label
+              htmlFor="course-description"
+              className="block text-sm font-semibold text-slate-800"
+            >
+              Description <span className="font-normal text-slate-400">(optional)</span>
+            </label>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Add a short note to help you identify this subject.
+            </p>
+            <textarea
+              id="course-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="e.g. Lecture notes, tutorials and exam preparation"
+              rows={4}
+              maxLength={500}
+              disabled={isSaving}
+              className="mt-3 w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:opacity-60"
             />
-            <SidebarItem label="Documents" href="/documents" />
-            <SidebarItem label="AI Chat" href="/chat" />
-            <SidebarItem label="Templates" href="/templates" />
-            <SidebarItem label="Analytics" href="/analytics" />
-            <SidebarItem label="Settings" href="/settings" />
-          </nav>
-        </aside>
+          </div>
 
-        {/* Main */}
-        <section className="flex-1">
-          {/* Header */}
-          <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
-            <div>
-              <h2 className="text-lg font-semibold">New Project</h2>
-              <p className="text-xs text-zinc-500">
-                Create a new AI workspace
-              </p>
+          {error && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {error}
             </div>
+          )}
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white">
-              SB
-            </div>
-          </header>
-
-          <div className="p-6 lg:p-10">
-            {/* Back */}
+          <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-900"
+              className="inline-flex items-center justify-center rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
-              <ArrowLeft size={16} />
-              Back to Dashboard
+              Cancel
             </Link>
 
-            {/* Heading */}
-            <div className="mt-6">
-              <h1 className="text-2xl font-bold">
-                Create a New Project
-              </h1>
-
-              <p className="mt-1 text-sm text-zinc-500">
-                Set up a workspace for your next project.
-              </p>
-            </div>
-
-            {/* Form */}
-            <div className="mt-8 max-w-3xl space-y-6">
-              {/* Project Name */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <label
-                  htmlFor="project-name"
-                  className="text-sm font-semibold"
-                >
-                  Project Name
-                </label>
-
-                <p className="mt-1 text-xs text-zinc-500">
-                  Give your project a clear name.
-                </p>
-
-                <input
-                  id="project-name"
-                  type="text"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                  placeholder="e.g. Marketing Campaign"
-                  className="mt-4 w-full rounded-lg border border-[#e8dfd0] bg-white px-3 py-3 text-sm outline-none focus:border-[#c58a3a]"
-                  disabled={isSaving}
-                />
-              </div>
-
-              {/* Project Description */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <label
-                  htmlFor="project-description"
-                  className="text-sm font-semibold"
-                >
-                  Project Description
-                </label>
-
-                <p className="mt-1 text-xs text-zinc-500">
-                  Briefly describe what you&apos;re working on.
-                </p>
-
-                <textarea
-                  id="project-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe your project..."
-                  rows={5}
-                  className="mt-4 w-full resize-none rounded-lg border border-[#e8dfd0] bg-white px-3 py-3 text-sm outline-none focus:border-[#c58a3a]"
-                  disabled={isSaving}
-                />
-              </div>
-
-              {/* Project Type */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <div>
-                  <h3 className="text-sm font-semibold">Project Type</h3>
-
-                  <p className="mt-1 text-xs text-zinc-500">
-                    Choose the type that best describes your project.
-                  </p>
-                </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <ProjectType
-                    icon={<FileText size={20} />}
-                    title="Content"
-                    description="Create and manage content"
-                    selected={projectType === "Content"}
-                    onClick={() => setProjectType("Content")}
-                  />
-
-                  <ProjectType
-                    icon={<Bot size={20} />}
-                    title="AI Assistant"
-                    description="Build with AI assistance"
-                    selected={projectType === "AI Assistant"}
-                    onClick={() => setProjectType("AI Assistant")}
-                  />
-
-                  <ProjectType
-                    icon={<FolderOpen size={20} />}
-                    title="Other"
-                    description="Another type of project"
-                    selected={projectType === "Other"}
-                    onClick={() => setProjectType("Other")}
-                  />
-                </div>
-              </div>
-
-              {/* AI Assistance */}
-              <div className="rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                      <Sparkles size={18} />
-                    </div>
-
-                    <div>
-                      <h3 className="text-sm font-semibold">
-                        AI Assistance
-                      </h3>
-
-                      <p className="mt-1 text-xs text-zinc-500">
-                        Enable AI-powered assistance for this project.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={aiEnabled}
-                    aria-label="Enable AI assistance"
-                    disabled={isSaving}
-                    onClick={() => setAiEnabled(!aiEnabled)}
-                    className={`h-6 w-11 rounded-full p-1 transition disabled:opacity-60 ${
-                      aiEnabled ? "bg-[#a66b16]" : "bg-zinc-300"
-                    }`}
-                  >
-                    <div
-                      className={`h-4 w-4 rounded-full bg-white transition ${
-                        aiEnabled ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {/* Error */}
-              {error && (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
-                >
-                  {error}
-                </div>
+            <button
+              type="button"
+              onClick={() => void handleCreateCourse()}
+              disabled={isSaving}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSaving ? (
+                <LoaderCircle className="animate-spin" size={17} />
+              ) : (
+                <Check size={17} />
               )}
-
-              {/* Buttons */}
-              <div className="flex justify-end gap-3">
-                <Link
-                  href="/"
-                  className={`rounded-lg border border-[#e8dfd0] bg-white px-5 py-2.5 text-sm font-medium hover:bg-zinc-50 ${
-                    isSaving ? "pointer-events-none opacity-60" : ""
-                  }`}
-                  aria-disabled={isSaving}
-                >
-                  Cancel
-                </Link>
-
-                <button
-                  type="button"
-                  onClick={handleCreateProject}
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#a66b16] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#925c12] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Check size={16} />
-                  {isSaving ? "Saving..." : "Create Project"}
-                </button>
-              </div>
-            </div>
+              {isSaving ? "Creating course..." : "Create course"}
+            </button>
           </div>
-        </section>
+        </div>
+
+        <p className="mt-6 text-center text-xs leading-5 text-slate-400">
+          Your courses are saved to your account in SkulPadi.
+        </p>
       </div>
     </main>
-  );
-}
-
-function ProjectType({
-  icon,
-  title,
-  description,
-  selected,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`relative rounded-xl border p-4 text-left transition ${
-        selected
-          ? "border-[#c58a3a] bg-[#fbf1df]"
-          : "border-[#e8dfd0] bg-white hover:bg-zinc-50"
-      }`}
-    >
-      {selected && (
-        <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#a66b16] text-white">
-          <Check size={13} />
-        </div>
-      )}
-
-      <div
-        className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-          selected
-            ? "bg-[#a66b16] text-white"
-            : "bg-[#f5f0e8] text-[#a66b16]"
-        }`}
-      >
-        {icon}
-      </div>
-
-      <p className="mt-3 text-sm font-semibold">{title}</p>
-
-      <p className="mt-1 text-xs text-zinc-500">{description}</p>
-    </button>
-  );
-}
-
-function SidebarItem({
-  label,
-  href,
-  active = false,
-}: {
-  label: string;
-  href: string;
-  active?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`block rounded-lg px-3 py-2.5 text-sm transition ${
-        active
-          ? "bg-[#fbf1df] font-semibold text-[#9a6317]"
-          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
-      }`}
-    >
-      {label}
-    </Link>
   );
 }

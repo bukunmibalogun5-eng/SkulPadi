@@ -22,6 +22,16 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
+type ProjectItem = {
+  id: string;
+  name: string;
+};
+
+type ProjectRow = {
+  id: string;
+  name: string;
+};
+
 type DocumentItem = {
   id: string;
   name: string;
@@ -30,6 +40,7 @@ type DocumentItem = {
   uploadedAt: string;
   storagePath: string | null;
   sizeBytes: number | null;
+  projectId: string | null;
 };
 
 type DocumentRow = {
@@ -39,17 +50,31 @@ type DocumentRow = {
   created_at: string;
   storage_path: string | null;
   file_size_bytes: number | string | null;
+  project_id: string | null;
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const ALLOWED_EXTENSIONS = new Set([
-  "pdf", "doc", "docx", "txt", "xlsx", "xls", "csv",
-  "png", "jpg", "jpeg",
+  "pdf",
+  "doc",
+  "docx",
+  "txt",
+  "xlsx",
+  "xls",
+  "csv",
+  "png",
+  "jpg",
+  "jpeg",
 ]);
 
 const EXTRACTABLE_EXTENSIONS = new Set([
-  "pdf", "docx", "txt", "xlsx", "xls", "csv",
+  "pdf",
+  "docx",
+  "txt",
+  "xlsx",
+  "xls",
+  "csv",
 ]);
 
 function formatFileSize(bytes: number | null) {
@@ -111,6 +136,7 @@ function mapDocument(row: DocumentRow): DocumentItem {
     uploadedAt: formatDate(row.created_at),
     storagePath: row.storage_path,
     sizeBytes,
+    projectId: row.project_id,
   };
 }
 
@@ -144,6 +170,10 @@ export default function Documents() {
   const [supabase] = useState(() => createClient());
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectFilter, setProjectFilter] = useState("all");
+
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -169,15 +199,24 @@ export default function Documents() {
         if (!user) {
           if (!cancelled) {
             setDocuments([]);
+            setProjects([]);
             setError("Please log in to view your documents.");
           }
           return;
         }
 
+        const { data: projectData, error: projectError } = await supabase
+          .from("projects")
+          .select("id, name")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (projectError) throw projectError;
+
         const { data, error: queryError } = await supabase
           .from("documents")
           .select(
-            "id, name, type, created_at, storage_path, file_size_bytes"
+            "id, name, type, created_at, storage_path, file_size_bytes, project_id"
           )
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
@@ -185,6 +224,7 @@ export default function Documents() {
         if (queryError) throw queryError;
 
         if (!cancelled) {
+          setProjects((projectData ?? []) as ProjectRow[]);
           setDocuments(((data ?? []) as DocumentRow[]).map(mapDocument));
         }
       } catch (err) {
@@ -245,7 +285,7 @@ export default function Documents() {
       if (authError) throw authError;
       if (!user) throw new Error("Please log in before uploading files.");
 
-      // Validate all files before starting the upload batch.
+      // Validate every file before beginning the upload batch.
       for (const file of files) {
         const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 
@@ -258,7 +298,28 @@ export default function Documents() {
         }
 
         if (file.size > MAX_FILE_SIZE) {
-          throw new Error(`"${file.name}" exceeds the 10 MB file size limit.`);
+          throw new Error(
+            `"${file.name}" exceeds the 10 MB file size limit.`
+          );
+        }
+      }
+
+      // Check that the selected project belongs to this user.
+      if (selectedProjectId) {
+        const { data: project, error: selectedProjectError } =
+          await supabase
+            .from("projects")
+            .select("id")
+            .eq("id", selectedProjectId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+        if (selectedProjectError) throw selectedProjectError;
+
+        if (!project) {
+          throw new Error(
+            "The selected project could not be found. Please select it again."
+          );
         }
       }
 
@@ -277,15 +338,14 @@ export default function Documents() {
 
         if (uploadError) throw uploadError;
 
-        let content = "";
-
         try {
+          let content = "";
+
           // Extract text before saving the document record.
           if (EXTRACTABLE_EXTENSIONS.has(extension)) {
             const formData = new FormData();
             formData.append("file", file);
 
-            // Route location: app/documents/extract/route.ts
             const extractionResponse = await fetch(
               "/documents/extract",
               {
@@ -322,14 +382,15 @@ export default function Documents() {
               type: getFileType(file.name),
               storage_path: storagePath,
               file_size_bytes: file.size,
+              project_id: selectedProjectId || null,
             });
 
           if (insertError) throw insertError;
 
           uploadedCount++;
         } catch (processingError) {
-          // Avoid leaving an orphaned Storage object if processing or
-          // saving its database record fails.
+          // Remove the Storage object if extraction or database insertion
+          // fails, avoiding orphaned files.
           const { error: cleanupError } = await supabase.storage
             .from("documents")
             .remove([storagePath]);
@@ -343,8 +404,11 @@ export default function Documents() {
       }
 
       setNotice(
-        `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded successfully.`
+        `${uploadedCount} document${
+          uploadedCount === 1 ? "" : "s"
+        } uploaded successfully.`
       );
+
       refreshDocuments();
     } catch (err) {
       console.error("Document upload failed:", err);
@@ -357,7 +421,9 @@ export default function Documents() {
 
       if (uploadedCount > 0) {
         setNotice(
-          `${uploadedCount} document${uploadedCount === 1 ? "" : "s"} uploaded before an error occurred.`
+          `${uploadedCount} document${
+            uploadedCount === 1 ? "" : "s"
+          } uploaded before an error occurred.`
         );
       }
 
@@ -422,16 +488,28 @@ export default function Documents() {
       console.error("Document deletion failed:", err);
 
       setError(
-        err instanceof Error ? err.message : "Could not delete this document."
+        err instanceof Error
+          ? err.message
+          : "Could not delete this document."
       );
     } finally {
       setDeletingId(null);
     }
   }
 
-  const filteredDocuments = documents.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDocuments = documents.filter((item) => {
+    const matchesSearch = item.name
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+
+    const matchesProject =
+      projectFilter === "all" ||
+      (projectFilter === "unassigned"
+        ? !item.projectId
+        : item.projectId === projectFilter);
+
+    return matchesSearch && matchesProject;
+  });
 
   return (
     <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
@@ -523,15 +601,34 @@ export default function Documents() {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleUploadClick}
-                disabled={isUploading}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <Upload size={16} />
-                {isUploading ? "Uploading..." : "Upload Document"}
-              </button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={selectedProjectId}
+                  onChange={(event) =>
+                    setSelectedProjectId(event.target.value)
+                  }
+                  disabled={isUploading}
+                  aria-label="Choose a project for uploaded documents"
+                  className="rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
+                >
+                  <option value="">No project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleUploadClick}
+                  disabled={isUploading}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Upload size={16} />
+                  {isUploading ? "Uploading..." : "Upload Document"}
+                </button>
+              </div>
 
               <input
                 id="document-file-input"
@@ -576,19 +673,37 @@ export default function Documents() {
                 />
               </div>
 
+              <select
+                value={projectFilter}
+                onChange={(event) => setProjectFilter(event.target.value)}
+                aria-label="Filter documents by project"
+                className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
+              >
+                <option value="all">All projects</option>
+                <option value="unassigned">No project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+
               <div className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm text-zinc-600">
-                {documents.length}{" "}
-                {documents.length === 1 ? "document" : "documents"}
+                {filteredDocuments.length}{" "}
+                {filteredDocuments.length === 1 ? "document" : "documents"}
               </div>
             </div>
 
             <div className="mt-6 overflow-hidden rounded-xl border border-[#e8dfd0] bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px]">
+                <table className="w-full min-w-[850px]">
                   <thead>
                     <tr className="border-b border-[#eee7dc] bg-[#fcfaf6]">
                       <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
                         Document
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
+                        Project
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
                         Type
@@ -609,7 +724,7 @@ export default function Documents() {
                     {isLoading ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           className="px-6 py-14 text-center text-sm text-zinc-500"
                         >
                           Loading your documents...
@@ -641,15 +756,25 @@ export default function Documents() {
                               </div>
                             </Link>
                           </td>
+
+                          <td className="px-6 py-4 text-sm text-zinc-600">
+                            {projects.find(
+                              (project) => project.id === item.projectId
+                            )?.name ?? "No project"}
+                          </td>
+
                           <td className="px-6 py-4 text-sm text-zinc-600">
                             {item.type}
                           </td>
+
                           <td className="px-6 py-4 text-sm text-zinc-600">
                             {item.size}
                           </td>
+
                           <td className="px-6 py-4 text-sm text-zinc-600">
                             {item.uploadedAt}
                           </td>
+
                           <td className="px-6 py-4 text-right">
                             <button
                               type="button"
@@ -666,18 +791,18 @@ export default function Documents() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-6 py-14 text-center">
+                        <td colSpan={6} className="px-6 py-14 text-center">
                           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#fbf1df] text-[#a66b16]">
                             <File size={21} />
                           </div>
                           <p className="mt-4 text-sm font-medium">
-                            {searchTerm
+                            {searchTerm || projectFilter !== "all"
                               ? "No documents found"
                               : "No documents yet"}
                           </p>
                           <p className="mt-1 text-xs text-zinc-500">
-                            {searchTerm
-                              ? "Try another search term."
+                            {searchTerm || projectFilter !== "all"
+                              ? "Try another search term or project filter."
                               : "Upload a document to get started."}
                           </p>
                         </td>
