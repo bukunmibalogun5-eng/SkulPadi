@@ -51,11 +51,15 @@ export default function LoginPage() {
           </div>
 
           <h1 className="text-2xl font-bold text-slate-900">
-            AI Content Assistant
+            SkulPadi
           </h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in to continue to your workspace.
+          <p className="mt-2 text-sm font-medium text-violet-600">
+            Your lectures. Your learning. Your Padi.
+          </p>
+
+          <p className="mt-3 text-sm text-slate-500">
+            Sign in to continue your learning journey.
           </p>
         </div>
 

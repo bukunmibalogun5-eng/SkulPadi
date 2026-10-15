@@ -1,38 +1,77 @@
 
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
-
-const pdf = require("pdf-parse/lib/pdf-parse.js") as (
-  buffer: Buffer
-) => Promise<{ text: string }>;
+import { parseOffice } from "officeparser";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-const SUPPORTED_EXTENSIONS = new Set([
-  "txt",
-  "csv",
+const SUPPORTED_EXTENSIONS = [
   "pdf",
+  "pptx",
   "docx",
-  "xls",
+  "txt",
   "xlsx",
-]);
+  "xls",
+  "csv",
+];
 
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  const result = await pdf(buffer);
-  return result.text;
+function getFileExtension(fileName: string): string {
+  return fileName.split(".").pop()?.toLowerCase() ?? "";
+}
+
+async function extractOfficeText(
+  file: File,
+  fileType: "pdf" | "pptx",
+): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  const ast = await parseOffice(buffer, { fileType });
+  const result = await ast.to("text");
+
+  if (typeof result.value !== "string") {
+    throw new Error("Document text extraction failed.");
+  }
+
+  return result.value.trim();
+}
+
+async function extractDocx(file: File): Promise<string> {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const result = await mammoth.extractRawText({ buffer });
+
+  return result.value.trim();
+}
+
+async function extractSpreadsheet(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, { type: "array" });
+  const sections: string[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const worksheet = workbook.Sheets[sheetName];
+
+    if (!worksheet) continue;
+
+    const csv = XLSX.utils.sheet_to_csv(worksheet, {
+      blankrows: false,
+    });
+
+    if (csv.trim()) {
+      sections.push(`## Sheet: ${sheetName}\n\n${csv}`);
+    }
+  }
+
+  return sections.join("\n\n").trim();
 }
 
 export async function POST(request: Request) {
   try {
+    // Authenticate the request before processing the uploaded file.
     const supabase = await createClient();
-
     const {
       data: { user },
       error: authError,
@@ -40,9 +79,23 @@ export async function POST(request: Request) {
 
     if (authError || !user) {
       return NextResponse.json(
-        { error: "You must be signed in to extract documents." },
-        { status: 401 }
+        { error: "Please log in to extract document text." },
+        { status: 401 },
       );
+    }
+
+    // Reject obviously oversized requests before parsing multipart data.
+    const contentLength = request.headers.get("content-length");
+
+    if (contentLength !== null) {
+      const requestSize = Number(contentLength);
+
+      if (Number.isFinite(requestSize) && requestSize > MAX_FILE_SIZE + 1024 * 1024) {
+        return NextResponse.json(
+          { error: "Files must be 10 MB or smaller." },
+          { status: 413 },
+        );
+      }
     }
 
     const formData = await request.formData();
@@ -50,83 +103,92 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Please upload a valid file." },
-        { status: 400 }
+        { error: "Please select a file to upload." },
+        { status: 400 },
       );
     }
 
     if (file.size === 0) {
       return NextResponse.json(
-        { error: "The uploaded file is empty." },
-        { status: 400 }
+        { error: "The selected file is empty." },
+        { status: 400 },
       );
     }
 
     if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: "The file must be 10 MB or smaller." },
-        { status: 413 }
+        { error: "Files must be 10 MB or smaller." },
+        { status: 413 },
       );
     }
 
-    const extension = file.name.split(".").pop()?.toLowerCase();
+    const extension = getFileExtension(file.name);
 
-    if (!extension || !SUPPORTED_EXTENSIONS.has(extension)) {
+    if (!SUPPORTED_EXTENSIONS.includes(extension)) {
       return NextResponse.json(
         {
           error:
-            "Supported formats: TXT, CSV, PDF, DOCX, XLS, and XLSX.",
+            "Unsupported file type. Upload PDF, PPTX, DOCX, TXT, XLSX, XLS, or CSV files.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    let content = "";
+    let content: string;
 
-    if (extension === "txt" || extension === "csv") {
-      content = buffer.toString("utf-8");
-    } else if (extension === "pdf") {
-      content = await extractPdfText(buffer);
-    } else if (extension === "docx") {
-      const result = await mammoth.extractRawText({ buffer });
-      content = result.value;
-    } else if (extension === "xls" || extension === "xlsx") {
-      const workbook = XLSX.read(buffer, { type: "buffer" });
+    switch (extension) {
+      case "pdf":
+        content = await extractOfficeText(file, "pdf");
+        break;
 
-      content = workbook.SheetNames.map((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
+      case "pptx":
+        content = await extractOfficeText(file, "pptx");
+        break;
 
-        return `Sheet: ${sheetName}\n${XLSX.utils.sheet_to_csv(sheet)}`;
-      }).join("\n\n");
+      case "docx":
+        content = await extractDocx(file);
+        break;
+
+      case "txt":
+        content = (await file.text()).trim();
+        break;
+
+      case "xlsx":
+      case "xls":
+      case "csv":
+        content = await extractSpreadsheet(file);
+        break;
+
+      default:
+        content = "";
     }
 
-    if (!content.trim()) {
+    if (!content) {
       return NextResponse.json(
         {
           error:
-            "No readable text was found. Scanned PDFs may require OCR.",
+            "No readable text was found. The file may be empty, scanned, or contain only images.",
         },
-        { status: 422 }
+        { status: 422 },
       );
     }
 
     return NextResponse.json({
+      success: true,
       fileName: file.name,
       content,
       characterCount: content.length,
     });
   } catch (error) {
-    console.error("Document extraction error:", error);
+    // Keep detailed parser errors in server logs, not API responses.
+    console.error("Document extraction failed:", error);
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to extract document text.",
+          "Document extraction failed. Check that the file is valid and try again.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

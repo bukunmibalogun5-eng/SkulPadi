@@ -22,16 +22,6 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
-type ProjectItem = {
-  id: string;
-  name: string;
-};
-
-type ProjectRow = {
-  id: string;
-  name: string;
-};
-
 type DocumentItem = {
   id: string;
   name: string;
@@ -40,7 +30,6 @@ type DocumentItem = {
   uploadedAt: string;
   storagePath: string | null;
   sizeBytes: number | null;
-  projectId: string | null;
 };
 
 type DocumentRow = {
@@ -50,7 +39,15 @@ type DocumentRow = {
   created_at: string;
   storage_path: string | null;
   file_size_bytes: number | string | null;
-  project_id: string | null;
+};
+
+type ProjectRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  status: string | null;
+  ai_enabled: boolean;
 };
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -59,6 +56,7 @@ const ALLOWED_EXTENSIONS = new Set([
   "pdf",
   "doc",
   "docx",
+  "pptx",
   "txt",
   "xlsx",
   "xls",
@@ -71,6 +69,7 @@ const ALLOWED_EXTENSIONS = new Set([
 const EXTRACTABLE_EXTENSIONS = new Set([
   "pdf",
   "docx",
+  "pptx",
   "txt",
   "xlsx",
   "xls",
@@ -136,56 +135,31 @@ function mapDocument(row: DocumentRow): DocumentItem {
     uploadedAt: formatDate(row.created_at),
     storagePath: row.storage_path,
     sizeBytes,
-    projectId: row.project_id,
   };
 }
 
-function SidebarItem({
-  icon,
-  label,
-  href,
-  active = false,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  href: string;
-  active?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-        active
-          ? "bg-[#fbf1df] font-semibold text-[#9a6317]"
-          : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900"
-      }`}
-    >
-      {icon}
-      {label}
-    </Link>
-  );
-}
-
-export default function Documents() {
-  const [supabase] = useState(() => createClient());
+export default function DocumentsPage() {
+  const supabase = createClient();
 
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [projectFilter, setProjectFilter] = useState("all");
-
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedType, setSelectedType] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     let cancelled = false;
 
     async function fetchDocuments() {
+      setIsLoading(true);
       setError("");
 
       try {
@@ -205,27 +179,32 @@ export default function Documents() {
           return;
         }
 
-        const { data: projectData, error: projectError } = await supabase
-          .from("projects")
-          .select("id, name")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+        const [
+          { data: documentData, error: documentError },
+          { data: projectData, error: projectError },
+        ] = await Promise.all([
+          supabase
+            .from("documents")
+            .select(
+              "id, name, type, created_at, storage_path, file_size_bytes"
+            )
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("projects")
+            .select("id, name, description, category, status, ai_enabled")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+        ]);
 
+        if (documentError) throw documentError;
         if (projectError) throw projectError;
-
-        const { data, error: queryError } = await supabase
-          .from("documents")
-          .select(
-            "id, name, type, created_at, storage_path, file_size_bytes, project_id"
-          )
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (queryError) throw queryError;
 
         if (!cancelled) {
           setProjects((projectData ?? []) as ProjectRow[]);
-          setDocuments(((data ?? []) as DocumentRow[]).map(mapDocument));
+          setDocuments(
+            ((documentData ?? []) as DocumentRow[]).map(mapDocument)
+          );
         }
       } catch (err) {
         console.error("Loading documents failed:", err);
@@ -318,7 +297,7 @@ export default function Documents() {
 
         if (!project) {
           throw new Error(
-            "The selected project could not be found. Please select it again."
+            "The selected course could not be verified. Please select it again."
           );
         }
       }
@@ -338,21 +317,18 @@ export default function Documents() {
 
         if (uploadError) throw uploadError;
 
-        try {
-          let content = "";
+        let content = "";
 
+        try {
           // Extract text before saving the document record.
           if (EXTRACTABLE_EXTENSIONS.has(extension)) {
             const formData = new FormData();
             formData.append("file", file);
 
-            const extractionResponse = await fetch(
-              "/documents/extract",
-              {
-                method: "POST",
-                body: formData,
-              }
-            );
+            const extractionResponse = await fetch("/documents/extract", {
+              method: "POST",
+              body: formData,
+            });
 
             const extractionData = await extractionResponse.json();
 
@@ -377,20 +353,19 @@ export default function Documents() {
             .insert({
               id: documentId,
               user_id: user.id,
+              project_id: selectedProjectId || null,
               name: file.name,
               content,
               type: getFileType(file.name),
               storage_path: storagePath,
               file_size_bytes: file.size,
-              project_id: selectedProjectId || null,
             });
 
           if (insertError) throw insertError;
 
           uploadedCount++;
-        } catch (processingError) {
-          // Remove the Storage object if extraction or database insertion
-          // fails, avoiding orphaned files.
+        } catch (err) {
+          // Remove the stored file if extraction or database insertion fails.
           const { error: cleanupError } = await supabase.storage
             .from("documents")
             .remove([storagePath]);
@@ -399,14 +374,12 @@ export default function Documents() {
             console.error("Storage cleanup failed:", cleanupError);
           }
 
-          throw processingError;
+          throw err;
         }
       }
 
       setNotice(
-        `${uploadedCount} document${
-          uploadedCount === 1 ? "" : "s"
-        } uploaded successfully.`
+        `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded successfully.`
       );
 
       refreshDocuments();
@@ -414,20 +387,15 @@ export default function Documents() {
       console.error("Document upload failed:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "An error occurred while uploading documents."
+        err instanceof Error ? err.message : "Could not upload your files."
       );
 
       if (uploadedCount > 0) {
         setNotice(
-          `${uploadedCount} document${
-            uploadedCount === 1 ? "" : "s"
-          } uploaded before an error occurred.`
+          `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded before the error occurred.`
         );
+        refreshDocuments();
       }
-
-      refreshDocuments();
     } finally {
       setIsUploading(false);
     }
@@ -435,14 +403,14 @@ export default function Documents() {
 
   async function handleDelete(documentItem: DocumentItem) {
     const confirmed = window.confirm(
-      `Delete "${documentItem.name}"? This action cannot be undone.`
+      `Are you sure you want to delete "${documentItem.name}"?`
     );
 
     if (!confirmed) return;
 
     setError("");
     setNotice("");
-    setDeletingId(documentItem.id);
+    setDeletingDocumentId(documentItem.id);
 
     try {
       const {
@@ -451,199 +419,183 @@ export default function Documents() {
       } = await supabase.auth.getUser();
 
       if (authError) throw authError;
-      if (!user) throw new Error("Please log in to delete documents.");
+      if (!user) throw new Error("Please log in before deleting files.");
 
-      const { data: record, error: findError } = await supabase
+      const { data: row, error: lookupError } = await supabase
         .from("documents")
         .select("id, storage_path")
         .eq("id", documentItem.id)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (findError) throw findError;
-
-      if (record.storage_path) {
-        const { error: storageError } = await supabase.storage
-          .from("documents")
-          .remove([record.storage_path]);
-
-        if (storageError) throw storageError;
-      }
+      if (lookupError) throw lookupError;
+      if (!row) throw new Error("This document could not be found.");
 
       const { error: deleteError } = await supabase
         .from("documents")
         .delete()
-        .eq("id", record.id)
+        .eq("id", documentItem.id)
         .eq("user_id", user.id);
 
-      if (deleteError) {
-        throw new Error(
-          "The file was removed from Storage, but its database record could not be deleted. Refresh and check the record."
-        );
+      if (deleteError) throw deleteError;
+
+      if (row.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from("documents")
+          .remove([row.storage_path]);
+
+        if (storageError) {
+          console.error("Storage file cleanup failed:", storageError);
+        }
       }
 
-      setNotice("Document deleted successfully.");
+      setNotice(`"${documentItem.name}" was deleted.`);
       refreshDocuments();
     } catch (err) {
-      console.error("Document deletion failed:", err);
+      console.error("Deleting document failed:", err);
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Could not delete this document."
+        err instanceof Error ? err.message : "Could not delete this document."
       );
     } finally {
-      setDeletingId(null);
+      setDeletingDocumentId(null);
     }
   }
 
-  const filteredDocuments = documents.filter((item) => {
-    const matchesSearch = item.name
+  const documentTypes = [
+    "All",
+    ...Array.from(new Set(documents.map((document) => document.type))).sort(),
+  ];
+
+  const filteredDocuments = documents.filter((document) => {
+    const matchesSearch = document.name
       .toLowerCase()
-      .includes(searchTerm.toLowerCase());
+      .includes(searchQuery.toLowerCase());
 
-    const matchesProject =
-      projectFilter === "all" ||
-      (projectFilter === "unassigned"
-        ? !item.projectId
-        : item.projectId === projectFilter);
+    const matchesType =
+      selectedType === "All" || document.type === selectedType;
 
-    return matchesSearch && matchesProject;
+    return matchesSearch && matchesType;
   });
 
   return (
-    <main className="min-h-screen bg-[#faf7f0] text-zinc-900">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
-        <aside className="hidden w-64 border-r border-[#e8dfd0] bg-white lg:flex lg:flex-col">
-          <div className="flex h-20 items-center gap-3 border-b border-[#eee7dc] px-6">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#a66b16] text-white">
-              <Sparkles size={19} />
+        <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white p-5 lg:block">
+          <Link href="/" className="mb-10 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              <Sparkles size={21} />
             </div>
             <div>
-              <h1 className="text-sm font-bold">AI Content</h1>
-              <p className="text-xs text-zinc-500">Assistant</p>
+              <p className="text-lg font-bold tracking-tight">SkulPadi</p>
+              <p className="text-xs text-slate-500">Your learning companion</p>
             </div>
-          </div>
+          </Link>
 
-          <nav className="flex-1 space-y-1 px-3 py-5">
-            <SidebarItem
-              icon={<LayoutDashboard size={17} />}
-              label="Dashboard"
+          <nav className="space-y-2">
+            <Link
               href="/"
-            />
-            <SidebarItem
-              icon={<Plus size={17} />}
-              label="New Project"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              <LayoutDashboard size={18} />
+              Dashboard
+            </Link>
+
+            <Link
               href="/new-project"
-            />
-            <SidebarItem
-              icon={<FileText size={17} />}
-              label="Documents"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              <Plus size={18} />
+              Create course
+            </Link>
+
+            <Link
               href="/documents"
-              active
-            />
-            <SidebarItem
-              icon={<MessageCircle size={17} />}
-              label="AI Chat"
+              className="flex items-center gap-3 rounded-xl bg-indigo-50 px-3 py-2.5 text-sm font-semibold text-indigo-700"
+            >
+              <FileText size={18} />
+              Documents
+            </Link>
+
+            <Link
               href="/chat"
-            />
-            <SidebarItem
-              icon={<PanelsTopLeft size={17} />}
-              label="Templates"
-              href="/templates"
-            />
-            <SidebarItem
-              icon={<BarChart3 size={17} />}
-              label="Analytics"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              <MessageCircle size={18} />
+              AI chat
+            </Link>
+
+            <Link
               href="/analytics"
-            />
-            <SidebarItem
-              icon={<Settings size={17} />}
-              label="Settings"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              <BarChart3 size={18} />
+              Analytics
+            </Link>
+
+            <Link
               href="/settings"
-            />
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              <Settings size={18} />
+              Settings
+            </Link>
           </nav>
 
-          <div className="border-t border-[#eee7dc] p-4">
-            <div className="rounded-xl bg-[#fbf4e8] p-4">
-              <p className="text-xs font-semibold text-[#8a5b16]">
-                AI Assistant
-              </p>
-              <p className="mt-1 text-xs leading-5 text-zinc-500">
-                Create smarter content with AI-powered tools.
-              </p>
+          <div className="mt-10 rounded-2xl bg-indigo-50 p-4">
+            <div className="mb-2 flex items-center gap-2 text-indigo-700">
+              <PanelsTopLeft size={18} />
+              <span className="text-sm font-semibold">Study smarter</span>
             </div>
+            <p className="text-xs leading-5 text-slate-600">
+              Keep your lecture materials organised and ready for AI-powered
+              learning.
+            </p>
           </div>
         </aside>
 
-        <section className="flex-1">
-          <header className="flex h-20 items-center justify-between border-b border-[#eee7dc] bg-white px-6 lg:px-10">
+        <section className="min-w-0 flex-1">
+          <header className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 sm:px-8">
             <div>
-              <h2 className="text-lg font-semibold">Documents</h2>
-              <p className="text-xs text-zinc-500">
-                Manage your project documents
-              </p>
+              <p className="text-sm text-slate-500">Your workspace</p>
+              <h1 className="text-xl font-bold tracking-tight">Documents</h1>
             </div>
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d8a35d] text-sm font-semibold text-white"
-              aria-label="User profile"
+
+            <Link
+              href="/"
+              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
             >
-              SB
-            </div>
+              Dashboard
+            </Link>
           </header>
 
-          <div className="p-6 lg:p-10">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mx-auto max-w-6xl p-5 sm:p-8">
+            <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
               <div>
-                <h1 className="text-2xl font-bold">Documents</h1>
-                <p className="mt-1 text-sm text-zinc-500">
-                  Upload and manage the documents used by your AI workspace.
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Your lecture library
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                  Upload and organise your lecture materials. SkulPadi can
+                  extract text from supported files to help you study.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <select
-                  value={selectedProjectId}
-                  onChange={(event) =>
-                    setSelectedProjectId(event.target.value)
-                  }
-                  disabled={isUploading}
-                  aria-label="Choose a project for uploaded documents"
-                  className="rounded-lg border border-[#e8dfd0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
-                >
-                  <option value="">No project</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleUploadClick}
-                  disabled={isUploading}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#a66b16] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#8e5a12] disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <Upload size={16} />
-                  {isUploading ? "Uploading..." : "Upload Document"}
-                </button>
-              </div>
-
-              <input
-                id="document-file-input"
-                type="file"
-                multiple
-                onChange={handleFileChange}
-                className="hidden"
-                accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
-              />
+              <button
+                type="button"
+                onClick={handleUploadClick}
+                disabled={isUploading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Upload size={18} />
+                {isUploading ? "Uploading..." : "Upload documents"}
+              </button>
             </div>
 
             {error && (
               <div
                 role="alert"
-                className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
               >
                 {error}
               </div>
@@ -652,35 +604,27 @@ export default function Documents() {
             {notice && (
               <div
                 role="status"
-                className="mt-5 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700"
+                className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700"
               >
                 {notice}
               </div>
             )}
 
-            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <div className="relative flex-1">
-                <Search
-                  size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-                />
-                <input
-                  type="text"
-                  placeholder="Search documents..."
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="w-full rounded-lg border border-[#e8dfd0] bg-white py-2.5 pl-10 pr-4 text-sm outline-none focus:border-[#c58a3a]"
-                />
-              </div>
+            <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
+              <label
+                htmlFor="course-select"
+                className="mb-2 block text-sm font-semibold text-slate-700"
+              >
+                Assign uploads to a course (optional)
+              </label>
 
               <select
-                value={projectFilter}
-                onChange={(event) => setProjectFilter(event.target.value)}
-                aria-label="Filter documents by project"
-                className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm outline-none focus:border-[#c58a3a]"
+                id="course-select"
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 sm:max-w-md"
               >
-                <option value="all">All projects</option>
-                <option value="unassigned">No project</option>
+                <option value="">No course selected</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
@@ -688,149 +632,162 @@ export default function Documents() {
                 ))}
               </select>
 
-              <div className="rounded-lg border border-[#e8dfd0] bg-white px-4 py-2.5 text-sm text-zinc-600">
-                {filteredDocuments.length}{" "}
-                {filteredDocuments.length === 1 ? "document" : "documents"}
-              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Files assigned to a course can be used as study materials for
+                that course.
+              </p>
             </div>
 
-            <div className="mt-6 overflow-hidden rounded-xl border border-[#e8dfd0] bg-white shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[850px]">
-                  <thead>
-                    <tr className="border-b border-[#eee7dc] bg-[#fcfaf6]">
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
-                        Document
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
-                        Project
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
-                        Type
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
-                        Size
-                      </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-zinc-500">
-                        Uploaded
-                      </th>
-                      <th className="px-6 py-4 text-right text-xs font-semibold text-zinc-500">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {isLoading ? (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-6 py-14 text-center text-sm text-zinc-500"
-                        >
-                          Loading your documents...
-                        </td>
-                      </tr>
-                    ) : filteredDocuments.length > 0 ? (
-                      filteredDocuments.map((item) => (
-                        <tr
-                          key={item.id}
-                          className="border-b border-[#f0e9de] last:border-b-0 hover:bg-[#fcfaf6]"
-                        >
-                          <td className="px-6 py-4">
-                            <Link
-                              href={`/documents/${item.id}`}
-                              className="block rounded-lg transition hover:opacity-80"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                                  {getFileIcon(item.type)}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium">
-                                    {item.name}
-                                  </p>
-                                  <p className="mt-1 text-xs text-zinc-400">
-                                    Document
-                                  </p>
-                                </div>
-                              </div>
-                            </Link>
-                          </td>
-
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {projects.find(
-                              (project) => project.id === item.projectId
-                            )?.name ?? "No project"}
-                          </td>
-
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {item.type}
-                          </td>
-
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {item.size}
-                          </td>
-
-                          <td className="px-6 py-4 text-sm text-zinc-600">
-                            {item.uploadedAt}
-                          </td>
-
-                          <td className="px-6 py-4 text-right">
-                            <button
-                              type="button"
-                              onClick={() => void handleDelete(item)}
-                              disabled={deletingId === item.id}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-red-50 hover:text-red-500 disabled:opacity-50"
-                              title="Delete document"
-                              aria-label={`Delete ${item.name}`}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={6} className="px-6 py-14 text-center">
-                          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#fbf1df] text-[#a66b16]">
-                            <File size={21} />
-                          </div>
-                          <p className="mt-4 text-sm font-medium">
-                            {searchTerm || projectFilter !== "all"
-                              ? "No documents found"
-                              : "No documents yet"}
-                          </p>
-                          <p className="mt-1 text-xs text-zinc-500">
-                            {searchTerm || projectFilter !== "all"
-                              ? "Try another search term or project filter."
-                              : "Upload a document to get started."}
-                          </p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-xl border border-[#e8dfd0] bg-white p-6 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#fbf1df] text-[#a66b16]">
-                  <Sparkles size={17} />
+            <div className="mb-6 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <FileText size={20} />
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold">
-                    Use your documents with AI
-                  </h3>
-                  <p className="mt-1 max-w-2xl text-xs leading-5 text-zinc-500">
-                    Uploaded files are stored privately. Text extraction is
-                    enabled for TXT, CSV, PDF, DOCX, XLS, and XLSX files.
-                    Scanned PDFs may require OCR. Images and legacy DOC files
-                    are stored but their text is not extracted yet.
+                <p className="text-sm text-slate-500">Total documents</p>
+                <p className="mt-1 text-2xl font-bold">{documents.length}</p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+                  <PanelsTopLeft size={20} />
+                </div>
+                <p className="text-sm text-slate-500">Courses</p>
+                <p className="mt-1 text-2xl font-bold">{projects.length}</p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                  <Sparkles size={20} />
+                </div>
+                <p className="text-sm text-slate-500">Text-extractable formats</p>
+                <p className="mt-1 text-2xl font-bold">
+                  {documents.filter((document) =>
+                    EXTRACTABLE_EXTENSIONS.has(document.type.toLowerCase())
+                  ).length}
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+              <div className="relative flex-1">
+                <Search
+                  size={18}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search your documents..."
+                  className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                />
+              </div>
+
+              <select
+                value={selectedType}
+                onChange={(event) => setSelectedType(event.target.value)}
+                aria-label="Filter by file type"
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-indigo-500"
+              >
+                {documentTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type === "All" ? "All file types" : type}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                <h3 className="font-semibold">Uploaded files</h3>
+                <span className="text-xs text-slate-500">
+                  {filteredDocuments.length} shown
+                </span>
+              </div>
+
+              {isLoading ? (
+                <div className="p-10 text-center text-sm text-slate-500">
+                  Loading your documents...
+                </div>
+              ) : filteredDocuments.length === 0 ? (
+                <div className="flex flex-col items-center px-5 py-14 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+                    <File size={25} />
+                  </div>
+                  <h4 className="font-semibold">No documents found</h4>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    {documents.length === 0
+                      ? "Upload your first lecture material to start building your study library."
+                      : "Try a different search term or file type filter."}
                   </p>
+                  {documents.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={handleUploadClick}
+                      disabled={isUploading}
+                      className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                    >
+                      <Upload size={17} />
+                      Upload your first file
+                    </button>
+                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {filteredDocuments.map((documentItem) => (
+                    <div
+                      key={documentItem.id}
+                      className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50"
+                    >
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                        {getFileIcon(documentItem.type)}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold">
+                          {documentItem.name}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {documentItem.type} · {documentItem.size} · Uploaded{" "}
+                          {documentItem.uploadedAt}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(documentItem)}
+                        disabled={deletingDocumentId === documentItem.id}
+                        aria-label={`Delete ${documentItem.name}`}
+                        title="Delete document"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {deletingDocumentId === documentItem.id ? (
+                          <span className="text-xs">...</span>
+                        ) : (
+                          <Trash2 size={17} />
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-500">
+              Supported formats: PDF, DOC, DOCX, PPTX, TXT, XLSX, XLS, CSV,
+              PNG, JPG and JPEG. Maximum file size: 10 MB per file. Text
+              extraction is available for PDF, DOCX, PPTX, TXT, XLSX, XLS and
+              CSV files.
+            </div>
+
+            <input
+              id="document-file-input"
+              type="file"
+              multiple
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".pdf,.doc,.docx,.pptx,.txt,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
+            />
           </div>
         </section>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   BookOpen,
   CalendarDays,
@@ -14,6 +15,7 @@ import {
   Flame,
   LoaderCircle,
   AlertCircle,
+  LogOut,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -26,9 +28,13 @@ type Course = {
 };
 
 export default function Home() {
+  const router = useRouter();
+
   const [courses, setCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +66,7 @@ export default function Home() {
         }
       } catch (err) {
         console.error("Failed to load courses:", err);
+
         if (!cancelled) {
           setError(
             err instanceof Error
@@ -68,16 +75,48 @@ export default function Home() {
           );
         }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     }
 
-    loadCourses();
+    void loadCourses();
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function handleSignOut() {
+    if (isSigningOut) return;
+
+    setIsSigningOut(true);
+    setSignOutError("");
+
+    try {
+      const supabase = createClient();
+
+      const { error: logoutError } = await supabase.auth.signOut();
+
+      if (logoutError) {
+        throw logoutError;
+      }
+
+      router.replace("/login");
+      router.refresh();
+    } catch (err) {
+      console.error("Sign-out failed:", err);
+
+      setSignOutError(
+        err instanceof Error
+          ? err.message
+          : "Unable to sign out. Please try again."
+      );
+
+      setIsSigningOut(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -91,10 +130,12 @@ export default function Home() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-700 text-white">
               <GraduationCap size={23} />
             </div>
+
             <div>
               <p className="text-lg font-bold tracking-tight text-blue-950">
                 SkulPadi
               </p>
+
               <p className="text-xs text-slate-500">
                 Your learning companion
               </p>
@@ -109,6 +150,7 @@ export default function Home() {
               <BookOpen size={18} />
               My courses
             </Link>
+
             <Link
               href="/documents"
               className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
@@ -116,6 +158,7 @@ export default function Home() {
               <FileText size={18} />
               My documents
             </Link>
+
             <Link
               href="/chat"
               className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
@@ -127,9 +170,11 @@ export default function Home() {
 
           <div className="m-4 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 p-4 text-white">
             <Sparkles size={20} />
+
             <p className="mt-3 text-sm font-semibold">
               Learn at your pace
             </p>
+
             <p className="mt-1 text-xs leading-5 text-blue-100">
               Turn your lecture materials into a study experience that works
               for you.
@@ -141,21 +186,55 @@ export default function Home() {
         <section className="min-w-0 flex-1">
           <header className="flex min-h-20 items-center justify-between gap-4 border-b border-blue-100 bg-white px-5 sm:px-8 lg:px-10">
             <div>
-              <p className="text-sm text-slate-500">Your learning space</p>
+              <p className="text-sm text-slate-500">
+                Your learning space
+              </p>
+
               <h1 className="text-xl font-bold text-blue-950 sm:text-2xl">
                 My courses
               </h1>
             </div>
 
-            <Link
-              href="/new-project"
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
-            >
-              <Plus size={17} />
-              <span className="hidden sm:inline">Add course</span>
-              <span className="sm:hidden">Add</span>
-            </Link>
+            <div className="flex shrink-0 items-center gap-2">
+              <Link
+                href="/new-project"
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-800"
+              >
+                <Plus size={17} />
+                <span className="hidden sm:inline">Add course</span>
+                <span className="sm:hidden">Add</span>
+              </Link>
+
+              <button
+                type="button"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+              >
+                {isSigningOut ? (
+                  <LoaderCircle
+                    size={17}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <LogOut size={17} />
+                )}
+
+                <span>
+                  {isSigningOut ? "Signing out..." : "Sign out"}
+                </span>
+              </button>
+            </div>
           </header>
+
+          {signOutError && (
+            <div
+              role="alert"
+              className="mx-5 mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:mx-8 lg:mx-10"
+            >
+              {signOutError}
+            </div>
+          )}
 
           <div className="mx-auto max-w-7xl p-5 sm:p-8 lg:p-10">
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-800 via-blue-700 to-indigo-700 p-6 text-white sm:p-9">
@@ -163,13 +242,16 @@ export default function Home() {
                 <p className="text-sm font-medium text-blue-100">
                   YOUR LECTURES. YOUR LEARNING. YOUR PADI.
                 </p>
+
                 <h2 className="mt-3 text-2xl font-bold leading-tight sm:text-4xl">
                   Ready to make your next study session count?
                 </h2>
+
                 <p className="mt-3 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
                   Keep your courses organised, learn from your materials, and
                   test what you know—all in one place.
                 </p>
+
                 <Link
                   href="/new-project"
                   className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-blue-800 transition hover:bg-blue-50"
@@ -178,6 +260,7 @@ export default function Home() {
                   <ChevronRight size={17} />
                 </Link>
               </div>
+
               <GraduationCap
                 className="absolute -bottom-8 -right-5 hidden text-white/10 sm:block"
                 size={210}
@@ -190,15 +273,20 @@ export default function Home() {
               <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500">Your courses</p>
+                    <p className="text-sm text-slate-500">
+                      Your courses
+                    </p>
+
                     <p className="mt-2 text-3xl font-bold text-blue-950">
                       {isLoading ? "—" : courses.length}
                     </p>
                   </div>
+
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
                     <FolderOpen size={22} />
                   </div>
                 </div>
+
                 <p className="mt-2 text-xs text-slate-500">
                   Existing workspaces included
                 </p>
@@ -207,15 +295,20 @@ export default function Home() {
               <div className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-slate-500">Study activity</p>
+                    <p className="text-sm text-slate-500">
+                      Study activity
+                    </p>
+
                     <p className="mt-2 text-lg font-bold text-blue-950">
                       Build your streak
                     </p>
                   </div>
+
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700">
                     <Flame size={22} />
                   </div>
                 </div>
+
                 <p className="mt-2 text-xs leading-5 text-slate-500">
                   Your activity calendar will reflect real study sessions,
                   not just logins.
@@ -230,10 +323,12 @@ export default function Home() {
                   <h2 className="text-xl font-bold text-blue-950">
                     Your course folders
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Open a course to choose Learn or Quiz.
                   </p>
                 </div>
+
                 <CalendarDays
                   className="hidden text-blue-600 sm:block"
                   size={24}
@@ -242,7 +337,10 @@ export default function Home() {
 
               {isLoading ? (
                 <div className="flex items-center justify-center gap-3 rounded-2xl border border-blue-100 bg-white py-16 text-sm text-slate-500">
-                  <LoaderCircle className="animate-spin" size={19} />
+                  <LoaderCircle
+                    className="animate-spin"
+                    size={19}
+                  />
                   Loading your courses...
                 </div>
               ) : error ? (
@@ -250,9 +348,16 @@ export default function Home() {
                   role="alert"
                   className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"
                 >
-                  <AlertCircle className="mt-0.5 shrink-0" size={19} />
+                  <AlertCircle
+                    className="mt-0.5 shrink-0"
+                    size={19}
+                  />
+
                   <div>
-                    <p className="font-semibold">We couldn’t load your courses.</p>
+                    <p className="font-semibold">
+                      We couldn’t load your courses.
+                    </p>
+
                     <p className="mt-1">{error}</p>
                   </div>
                 </div>
@@ -261,13 +366,16 @@ export default function Home() {
                   <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
                     <BookOpen size={27} />
                   </div>
+
                   <h3 className="mt-4 text-lg font-bold text-blue-950">
                     Your study space starts here
                   </h3>
+
                   <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
                     Create a course folder for a subject, such as CPE 410 or
                     EEG 432. You can organise your learning around each course.
                   </p>
+
                   <Link
                     href="/new-project"
                     className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800"
@@ -284,6 +392,7 @@ export default function Home() {
                       "bg-indigo-50 text-indigo-700",
                       "bg-sky-50 text-sky-700",
                     ];
+
                     const accent = accents[index % accents.length];
 
                     return (
@@ -298,6 +407,7 @@ export default function Home() {
                           >
                             <FolderOpen size={23} />
                           </div>
+
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500">
                             Course folder
                           </span>
@@ -306,6 +416,7 @@ export default function Home() {
                         <h3 className="mt-5 truncate text-lg font-bold text-blue-950">
                           {course.name}
                         </h3>
+
                         <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500">
                           {course.description?.trim() ||
                             "Your lecture materials and study sessions belong here."}
@@ -315,6 +426,7 @@ export default function Home() {
                           <span className="text-sm font-medium text-blue-700">
                             Open course
                           </span>
+
                           <ChevronRight
                             size={18}
                             className="text-blue-600 transition group-hover:translate-x-1"
@@ -331,9 +443,11 @@ export default function Home() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm">
                       <Plus size={23} />
                     </div>
+
                     <p className="mt-4 font-semibold text-blue-950">
                       Add another course
                     </p>
+
                     <p className="mt-1 text-sm text-slate-500">
                       Create a folder for another subject
                     </p>
