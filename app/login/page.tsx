@@ -7,6 +7,15 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Sparkles, Mail, Lock, LoaderCircle } from "lucide-react";
 
+function getLocalDateString() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -22,20 +31,42 @@ export default function LoginPage() {
     try {
       const supabase = createClient();
 
-      const { error: loginError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+      const {
+        data: { user },
+        error: loginError,
+      } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      if (loginError) {
-        setError(loginError.message);
+      if (loginError || !user) {
+        setError(loginError?.message || "Unable to sign in. Please try again.");
         return;
+      }
+
+      // Record this sign-in once per user per local calendar day.
+      const { error: activityError } = await supabase
+        .from("user_login_days")
+        .upsert(
+          {
+            user_id: user.id,
+            activity_date: getLocalDateString(),
+          },
+          {
+            onConflict: "user_id,activity_date",
+            ignoreDuplicates: true,
+          }
+        );
+
+      // Do not prevent a successful login if activity tracking has a problem.
+      if (activityError) {
+        console.error("Could not record login activity:", activityError);
       }
 
       router.replace("/");
       router.refresh();
-    } catch {
+    } catch (err) {
+      console.error("Login failed:", err);
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -50,9 +81,7 @@ export default function LoginPage() {
             <Sparkles className="h-6 w-6 text-violet-600" />
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-900">
-            SkulPadi
-          </h1>
+          <h1 className="text-2xl font-bold text-slate-900">SkulPadi</h1>
 
           <p className="mt-2 text-sm font-medium text-violet-600">
             Your lectures. Your learning. Your Padi.
