@@ -180,13 +180,17 @@ export default function LearnPage() {
     }
   }, [courseId, router, supabase]);
 
-  useEffect(() => {
+    useEffect(() => {
+    // Load the course and lecture documents from Supabase.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadWorkspace();
   }, [loadWorkspace]);
 
   // Restore the saved session whenever the selected lecture changes.
-  useEffect(() => {
+    useEffect(() => {
     if (!selectedDocumentId || !courseId) {
+      // Clear the previous lecture session when no lecture is selected.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setNotes("");
       setMessages([]);
       setSessionLoading(false);
@@ -591,7 +595,7 @@ Selected lecture: ${activeDocument.name}
 
 LECTURE MATERIAL:
 <lecture_material>
-${activeDocument.content.slice(0, 45000)}
+${(activeDocument.content ?? "").slice(0, 45000)}
 </lecture_material>
 
 Conversation so far:

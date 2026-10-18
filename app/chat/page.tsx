@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -46,7 +46,7 @@ const welcomeMessage: Message = {
   id: "welcome",
   role: "assistant",
   content:
-    "Hello! I'm your AI Content Assistant. I can help you brainstorm ideas, improve your writing, summarize content, and work with your documents. Select a document below whenever you want me to use its contents.",
+    "Hello! I'm your SkulPadi study companion. I can help you understand lecture materials, summarize key concepts, and answer questions using your documents. Select a lecture below to get started.",
   createdAt: "2026-01-01T00:00:00.000Z",
 };
 
@@ -403,7 +403,7 @@ export default function Chat() {
             </div>
 
             <div>
-              <h1 className="text-sm font-bold">AI Content</h1>
+              <h1 className="text-sm font-bold">SkulPadi</h1>
               <p className="text-xs text-zinc-500">Assistant</p>
             </div>
           </div>
@@ -464,7 +464,7 @@ export default function Chat() {
             <div>
               <h2 className="text-lg font-semibold">AI Chat</h2>
               <p className="text-xs text-zinc-500">
-                Chat with your AI content assistant
+                Ask questions about your lectures
               </p>
             </div>
 
@@ -713,7 +713,7 @@ export default function Chat() {
                           ? "Loading documents..."
                           : documents.length === 0
                             ? "No saved documents available"
-                            : "General chat — no document selected"}
+                            : "General chat â€” no document selected"}
                       </option>
 
                       {documents.map((document) => (
@@ -762,7 +762,7 @@ export default function Chat() {
 
                   <div className="flex items-center justify-between border-t border-[#eee7dc] px-2 pt-2">
                     <p className="text-xs text-zinc-400">
-                      Press Enter to send • Shift + Enter for a new line
+                      Press Enter to send â€¢ Shift + Enter for a new line
                     </p>
 
                     <button
@@ -818,3 +818,5 @@ function SidebarItem({
     </Link>
   );
 }
+
+

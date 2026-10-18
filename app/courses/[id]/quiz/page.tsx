@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -140,6 +140,10 @@ export default function QuizPage() {
   const [difficultyFilter, setDifficultyFilter] =
     useState(ALL_DIFFICULTIES);
   const [studySet, setStudySet] = useState<StudySet>("all");
+  const [savedDeckId, setSavedDeckId] = useState("");
+  const [shareToken, setShareToken] = useState("");
+  const [sharing, setSharing] = useState(false);
+  const [revokingShare, setRevokingShare] = useState(false);
   useEffect(() => {
     let cancelled = false;
     async function loadCourseAndLectures() {
@@ -209,7 +213,7 @@ export default function QuizPage() {
       try {
         const { data, error: deckError } = await supabase
           .from("flashcard_decks")
-          .select("cards, statuses")
+          .select("id, cards, statuses")
           .eq("user_id", userId)
           .eq("project_id", courseId)
           .eq("document_id", lectureId)
@@ -217,6 +221,8 @@ export default function QuizPage() {
         if (deckError) throw new Error(deckError.message);
         if (cancelled) return;
         if (!data) {
+          setSavedDeckId("");
+          setShareToken("");
           setCards([]);
           setStatuses({});
           setCurrentIndex(0);
@@ -224,6 +230,14 @@ export default function QuizPage() {
           setTopicFilter(ALL_TOPICS);
           setDifficultyFilter(ALL_DIFFICULTIES);
           return;
+        }
+        setSavedDeckId(data.id);
+        const shareResponse = await fetch(`/api/shared-decks?deckId=${encodeURIComponent(data.id)}`, { cache: "no-store" });
+        if (shareResponse.ok) {
+          const shareData = await shareResponse.json();
+          setShareToken(typeof shareData.token === "string" ? shareData.token : "");
+        } else {
+          setShareToken("");
         }
         const savedCards = normalizeSavedCards(data.cards);
         const savedStatuses = parseStatuses(data.statuses);
@@ -275,7 +289,11 @@ export default function QuizPage() {
         }),
       [cards, topicFilter, difficultyFilter, studySet, statuses]
     );
-  const currentCard = filteredCards[currentIndex];
+  const safeCurrentIndex = Math.min(
+  currentIndex,
+  Math.max(0, filteredCards.length - 1)
+);
+const currentCard = filteredCards[safeCurrentIndex];
   const knownCount = cards.filter(
     (card) => statuses[card.id] === "known"
   ).length;
@@ -284,7 +302,7 @@ export default function QuizPage() {
   ).length;
   const progress =
     filteredCards.length > 0
-      ? ((currentIndex + 1) / filteredCards.length) * 100
+      ? ((safeCurrentIndex + 1) / filteredCards.length) * 100
       : 0;
   function resetStudyPosition() {
     setCurrentIndex(0);
@@ -292,6 +310,8 @@ export default function QuizPage() {
   }
   function handleLectureChange(nextId: string) {
     setLectureId(nextId);
+    setSavedDeckId("");
+    setShareToken("");
     setCards([]);
     setStatuses({});
     setTopicFilter(ALL_TOPICS);
@@ -313,17 +333,7 @@ export default function QuizPage() {
       setStudySet(value);
       resetStudyPosition();
     }
-    useEffect(() => {
-      if (filteredCards.length === 0) {
-        if (currentIndex !== 0) setCurrentIndex(0);
-        setShowAnswer(false);
-        return;
-      }
-      if (currentIndex >= filteredCards.length) {
-        setCurrentIndex(filteredCards.length - 1);
-        setShowAnswer(false);
-      }
-    }, [filteredCards.length, currentIndex]);
+
   async function saveDeck(
     lecture: Lecture,
     deckCards: Flashcard[],
@@ -332,7 +342,7 @@ export default function QuizPage() {
     if (!userId) {
       throw new Error("Please sign in before saving flashcards.");
     }
-    const { error: saveError } = await supabase
+    const { data: savedDeck, error: saveError } = await supabase
       .from("flashcard_decks")
       .upsert(
         {
@@ -344,11 +354,12 @@ export default function QuizPage() {
           statuses: deckStatuses,
           updated_at: new Date().toISOString(),
         },
-        {
-          onConflict: "user_id,project_id,document_id",
-        }
-      );
+        { onConflict: "user_id,project_id,document_id" }
+      )
+      .select("id")
+      .single();
     if (saveError) throw new Error(saveError.message);
+    if (savedDeck?.id) setSavedDeckId(savedDeck.id);
   }
   async function prepareQuiz() {
     if (!selectedLecture) {
@@ -498,6 +509,40 @@ ${lectureContent.slice(0, 25000)}
       setGenerating(false);
     }
   }
+  async function handleShareDeck() {
+    if (!savedDeckId || sharing) return;
+    setSharing(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/shared-decks", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deckId: savedDeckId }),
+      });
+      const result = await response.json();
+      if (!response.ok || typeof result.token !== "string") throw new Error(result.error || "Could not create a share link.");
+      setShareToken(result.token);
+      const url = `${window.location.origin}/shared/deck/${result.token}`;
+      try { await navigator.clipboard.writeText(url); setNotice("Share link copied. Anyone with the link can view this deck."); }
+      catch { setNotice(`Share link created: ${url}`); }
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not share this deck."); }
+    finally { setSharing(false); }
+  }
+
+  async function handleRevokeShare() {
+    if (!savedDeckId || revokingShare) return;
+    if (!window.confirm("Revoke this share link? Anyone using it will lose access.")) return;
+    setRevokingShare(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/shared-decks", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deckId: savedDeckId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not revoke this share link.");
+      setShareToken(""); setNotice("Share link revoked.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not revoke this share link."); }
+    finally { setRevokingShare(false); }
+  }
+
   function goToCard(nextIndex: number) {
     if (nextIndex < 0 || nextIndex >= filteredCards.length) return;
     setCurrentIndex(nextIndex);
@@ -648,6 +693,14 @@ ${lectureContent.slice(0, 25000)}
               </p>
             )}
           </div>
+          {cards.length > 0 && savedDeckId && (
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={() => void handleShareDeck()} disabled={sharing || saving || generating || loadingSavedDeck} className="rounded-xl bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
+                {sharing ? "Creating link..." : shareToken ? "Copy share link" : "Share flashcards"}
+              </button>
+              {shareToken && <button type="button" onClick={() => void handleRevokeShare()} disabled={revokingShare || saving || generating} className="rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50">{revokingShare ? "Revoking..." : "Revoke link"}</button>}
+            </div>
+          )}
           {generating && (
             <p role="status" className="mt-3 text-sm text-slate-500">
               Creating topic-labelled cards and assigning difficulty.
@@ -742,7 +795,7 @@ ${lectureContent.slice(0, 25000)}
                       {selectedLecture?.name}
                     </h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      Card {currentIndex + 1} of {filteredCards.length}
+                      Card {safeCurrentIndex + 1} of {filteredCards.length}
                     </p>
                   </div>
                   <button
@@ -811,8 +864,8 @@ ${lectureContent.slice(0, 25000)}
                 <div className="mt-5 flex items-center justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => goToCard(currentIndex - 1)}
-                    disabled={currentIndex === 0}
+                    onClick={() => goToCard(safeCurrentIndex - 1)}
+                    disabled={safeCurrentIndex === 0}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold hover:bg-slate-100 disabled:opacity-40"
                   >
                     <ChevronLeft size={17} />
@@ -820,8 +873,8 @@ ${lectureContent.slice(0, 25000)}
                   </button>
                   <button
                     type="button"
-                    onClick={() => goToCard(currentIndex + 1)}
-                    disabled={currentIndex === filteredCards.length - 1}
+                    onClick={() => goToCard(safeCurrentIndex + 1)}
+                    disabled={safeCurrentIndex === filteredCards.length - 1}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold hover:bg-slate-100 disabled:opacity-40"
                   >
                     Next
@@ -862,10 +915,10 @@ ${lectureContent.slice(0, 25000)}
                     </p>
                   </div>
                 </div>
-                {currentIndex === filteredCards.length - 1 && (
+                {filteredCards.length > 0 && safeCurrentIndex === filteredCards.length - 1 && (
                   <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-5">
                     <h3 className="font-semibold text-violet-950">
-                      You've reached the end of this study set
+                      You&apos;ve reached the end of this study set
                     </h3>
                     <p className="mt-2 text-sm leading-6 text-violet-900">
                       Across the full deck: {knownCount} known,{" "}
@@ -922,9 +975,10 @@ ${lectureContent.slice(0, 25000)}
           </section>
         )}
         <footer className="mt-10 border-t border-slate-200 pt-5 text-center text-xs text-slate-500">
-          SkulPadi — Your lectures. Your learning. Your Padi.
+          SkulPadi â€” Your lectures. Your learning. Your Padi.
         </footer>
       </div>
     </main>
   );
 }
+

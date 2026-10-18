@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -45,7 +45,7 @@ export default function NewProject() {
         return;
       }
 
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from("projects")
         .insert({
           user_id: user.id,
@@ -112,7 +112,7 @@ export default function NewProject() {
             Create a course
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-slate-500 sm:text-base">
-            Create a folder for a subject. You’ll be able to keep its lecture
+            Create a folder for a subject. Youâ€™ll be able to keep its lecture
             materials and study activities organised in one place.
           </p>
         </div>
@@ -139,7 +139,7 @@ export default function NewProject() {
                   void handleCreateCourse();
                 }
               }}
-              placeholder="e.g. CPE 410 — Computer Engineering"
+              placeholder="e.g. CPE 410 â€” Computer Engineering"
               maxLength={100}
               disabled={isSaving}
               className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-50 disabled:opacity-60"
@@ -208,3 +208,4 @@ export default function NewProject() {
     </main>
   );
 }
+

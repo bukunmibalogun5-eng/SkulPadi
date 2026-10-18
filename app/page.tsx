@@ -1,4 +1,4 @@
-
+﻿
 "use client";
 
 import { useEffect, useState } from "react";
@@ -8,7 +8,6 @@ import {
   BookOpen,
   CalendarDays,
   ChevronRight,
-  FileText,
   FolderOpen,
   GraduationCap,
   Plus,
@@ -21,7 +20,6 @@ import {
   Check,
   Trophy,
   ChevronLeft,
-  ChevronDown,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -388,19 +386,13 @@ export default function Home() {
               <BookOpen size={18} />
               My courses
             </Link>
+
             <Link
-              href="/documents"
-              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
+              href="/leaderboard"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50 hover:text-blue-700"
             >
-              <FileText size={18} />
-              My documents
-            </Link>
-            <Link
-              href="/chat"
-              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50"
-            >
-              <Sparkles size={18} />
-              AI study chat
+              <Trophy size={18} />
+              Study leaderboard
             </Link>
           </nav>
 
@@ -469,7 +461,7 @@ export default function Home() {
                 </h2>
                 <p className="mt-3 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
                   Keep your courses organised, learn from your materials, and
-                  test what you know—all in one place.
+                  test what you knowâ€”all in one place.
                 </p>
                 <Link
                   href="/new-project"
@@ -699,7 +691,7 @@ export default function Home() {
                   <AlertCircle className="mt-0.5 shrink-0" size={19} />
                   <div>
                     <p className="font-semibold">
-                      We couldn’t load your courses.
+                      We couldnâ€™t load your courses.
                     </p>
                     <p className="mt-1">{error}</p>
                   </div>
@@ -809,7 +801,7 @@ export default function Home() {
             </div>
 
             <p className="mt-10 text-center text-xs text-slate-400">
-              SkulPadi · Study smarter, one course at a time.
+              SkulPadi Â· Study smarter, one course at a time.
             </p>
           </div>
         </section>
@@ -817,3 +809,4 @@ export default function Home() {
     </main>
   );
 }
+
