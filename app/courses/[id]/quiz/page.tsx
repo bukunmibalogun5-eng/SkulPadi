@@ -383,13 +383,33 @@ const currentCard = filteredCards[safeCurrentIndex];
     // Deliberately keep the old deck visible until the new deck
     // has been generated and successfully saved.
     try {
+      // Preferences are saved per signed-in user by the Settings page.
+      // Fall back safely if local storage is unavailable or malformed.
+      let requestedCardCount: 10 | 15 | 20 = 20;
+      try {
+        const rawPreferences = window.localStorage.getItem(
+          `skulpadi-study-preferences-${userId}`
+        );
+        if (rawPreferences) {
+          const preferences: unknown = JSON.parse(rawPreferences);
+          if (preferences && typeof preferences === "object" && "quizLength" in preferences) {
+            const value = Number((preferences as { quizLength?: unknown }).quizLength);
+            if (value === 10 || value === 15 || value === 20) {
+              requestedCardCount = value;
+            }
+          }
+        }
+      } catch {
+        // Keep the default of 20 cards if preferences cannot be read.
+      }
+
       const prompt = `
 You are SkulPadi, a careful university study tutor.
-Create up to 20 high-quality flashcards based ONLY on the lecture below.
+Create up to ${requestedCardCount} high-quality flashcards based ONLY on the lecture below.
 CARD COUNT:
-\- Aim for 20 distinct cards if the lecture supports them.
-\- Return fewer if the material does not support 20 useful questions.
-\- Never return more than 20.
+\- Aim for ${requestedCardCount} distinct cards if the lecture supports them.
+\- Return fewer if the material does not support ${requestedCardCount} useful questions.
+\- Never return more than ${requestedCardCount}.
 \- Do not repeat or slightly rephrase the same question.
 TOPIC LABELS:
 \- Give each card a short topic label describing the concept tested.
@@ -465,7 +485,7 @@ ${lectureContent.slice(0, 25000)}
       if (
         !Array.isArray(parsed) ||
         parsed.length === 0 ||
-        parsed.length > 20 ||
+        parsed.length > requestedCardCount ||
         !parsed.every(isGeneratedCard)
       ) {
         throw new Error(
@@ -981,4 +1001,5 @@ ${lectureContent.slice(0, 25000)}
     </main>
   );
 }
+
 

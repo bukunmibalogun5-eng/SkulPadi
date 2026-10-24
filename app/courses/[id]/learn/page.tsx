@@ -437,9 +437,44 @@ export default function LearnPage() {
     setNotice("");
     setGenerating(true);
 
+     // Read the signed-in student's saved note preference. If it is missing,
+      // malformed, or unavailable, retain the existing detailed-note behavior.
+      let noteStyle: "detailed" | "concise" = "detailed";
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          const rawPreferences = window.localStorage.getItem(
+            `skulpadi-study-preferences-${user.id}`
+          );
+          if (rawPreferences) {
+            const preferences: unknown = JSON.parse(rawPreferences);
+            if (
+              preferences &&
+              typeof preferences === "object" &&
+              "noteStyle" in preferences
+            ) {
+              const value = (preferences as { noteStyle?: unknown }).noteStyle;
+              if (value === "detailed" || value === "concise") {
+                noteStyle = value;
+              }
+            }
+          }
+        }
+      } catch {
+        // Keep the default detailed-note style if preferences cannot be read.
+      }
+
+      const noteStyleInstruction =
+        noteStyle === "concise"
+          ? `Create concise, exam-focused study notes from the supplied lecture material. Prioritize core ideas, key definitions, essential formulas, short explanations, and high-value revision points. Keep necessary derivations and worked steps for mathematical or technical content, but avoid repetition and unnecessary elaboration. Stay faithful to the lecture and do not omit information needed to understand its main concepts.`
+          : `Create comprehensive study notes from the supplied lecture material. Explain important concepts clearly, include relevant detail and examples supported by the lecture, and show mathematical reasoning and worked steps where appropriate.`;
+
     try {
       const prompt = `
-You are SkulPadi, a careful university-level study tutor. Create comprehensive study notes from the supplied lecture material.
+You are SkulPadi, a careful university-level study tutor.
+${noteStyleInstruction}
 
 OUTPUT FORMAT:
 - Return the notes directly as Markdown.
