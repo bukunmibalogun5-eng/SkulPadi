@@ -20,6 +20,7 @@ import {
   Check,
   Trophy,
   ChevronLeft,
+  Settings,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -394,6 +395,14 @@ export default function Home() {
               <Trophy size={18} />
               Study leaderboard
             </Link>
+
+            <Link
+              href="/settings"
+              className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-50 hover:text-blue-700"
+            >
+              <Settings size={18} />
+              Settings
+            </Link>
           </nav>
 
           <div className="m-4 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 p-4 text-white">
@@ -461,7 +470,7 @@ export default function Home() {
                 </h2>
                 <p className="mt-3 max-w-xl text-sm leading-6 text-blue-100 sm:text-base">
                   Keep your courses organised, learn from your materials, and
-                  test what you knowâ€”all in one place.
+                  test what you know all in one place.
                 </p>
                 <Link
                   href="/new-project"
