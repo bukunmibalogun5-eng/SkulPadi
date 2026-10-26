@@ -2,6 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -103,6 +104,36 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
+
+    
+    // Rate-limit AI requests using the authenticated user's ID.
+    const limit = await checkRateLimit(user.id, "ai");
+
+    if (!limit.allowed) {
+      if (limit.reason === "unavailable") {
+        return Response.json(
+          {
+            error:
+              "The service is temporarily unavailable. Please try again shortly.",
+          },
+          { status: 503 },
+        );
+      }
+
+      return Response.json(
+        {
+          error:
+            "Too many AI requests. Please wait a minute before trying again.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limit.retryAfter),
+          },
+        },
+      );
+    }
+
 
     // This privileged client is used ONLY for the private interaction registry.
     // Never expose it to browser code or use it for ordinary user data access.

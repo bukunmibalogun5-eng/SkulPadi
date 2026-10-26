@@ -4,6 +4,7 @@ import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import { parseOffice } from "officeparser";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -70,8 +71,9 @@ async function extractSpreadsheet(file: File): Promise<string> {
 
 export async function POST(request: Request) {
   try {
-    // Authenticate the request before processing the uploaded file.
+    // 1. Authenticate the user before processing the upload.
     const supabase = await createClient();
+
     const {
       data: { user },
       error: authError,
@@ -84,13 +86,43 @@ export async function POST(request: Request) {
       );
     }
 
-    // Reject obviously oversized requests before parsing multipart data.
+    // 2. Apply the upload rate limit to this authenticated user.
+    const limit = await checkRateLimit(user.id, "upload");
+
+    if (!limit.allowed) {
+      if (limit.reason === "unavailable") {
+        return NextResponse.json(
+          {
+            error:
+              "The service is temporarily unavailable. Please try again shortly.",
+          },
+          { status: 503 },
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: "Too many uploads. Please wait before trying again.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(limit.retryAfter),
+          },
+        },
+      );
+    }
+
+    // 3. Reject obviously oversized requests before parsing multipart data.
     const contentLength = request.headers.get("content-length");
 
     if (contentLength !== null) {
       const requestSize = Number(contentLength);
 
-      if (Number.isFinite(requestSize) && requestSize > MAX_FILE_SIZE + 1024 * 1024) {
+      if (
+        Number.isFinite(requestSize) &&
+        requestSize > MAX_FILE_SIZE + 1024 * 1024
+      ) {
         return NextResponse.json(
           { error: "Files must be 10 MB or smaller." },
           { status: 413 },
@@ -98,6 +130,7 @@ export async function POST(request: Request) {
       }
     }
 
+    // 4. Read and validate the uploaded file.
     const formData = await request.formData();
     const file = formData.get("file");
 
@@ -134,6 +167,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 5. Extract text using the appropriate parser.
     let content: string;
 
     switch (extension) {
@@ -163,6 +197,7 @@ export async function POST(request: Request) {
         content = "";
     }
 
+    // 6. Handle files that contain no extractable text.
     if (!content) {
       return NextResponse.json(
         {
@@ -173,6 +208,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // 7. Return the extracted text.
     return NextResponse.json({
       success: true,
       fileName: file.name,
@@ -192,3 +228,4 @@ export async function POST(request: Request) {
     );
   }
 }
+
